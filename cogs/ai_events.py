@@ -158,7 +158,8 @@ IMPORTANT: Return ONLY valid JSON in this exact format:
 
 Requirements:
 - Fantasy themed, family-friendly
-- Item names should match the event theme
+- Item names MUST be actual weapon/armor names (like "Shadow Blade", "Iron Gauntlets", "Crystal Staff") NOT potions or consumables
+- Include variety: swords, axes, armor pieces, shields, bows, etc.
 - Keep title under 40 characters
 - No code blocks, just raw JSON"""
 
@@ -236,6 +237,50 @@ Requirements:
         except Exception as e:
             logger.warning(f"AI generation failed: {e}")
             return self._get_fallback_event(event_type, participants)
+
+    def _name_matches_item_type(self, name: str, item_type: str) -> bool:
+        """Check if an AI-generated name makes sense for the given item type"""
+        name_lower = name.lower()
+        item_type_lower = item_type.lower()
+        
+        # Define keywords that should match item types
+        type_keywords = {
+            'sword': ['blade', 'sword', 'edge', 'saber', 'cutlass'],
+            'axe': ['axe', 'hatchet', 'cleaver', 'chopper'],
+            'hammer': ['hammer', 'maul', 'mallet', 'crusher'],
+            'bow': ['bow', 'longbow', 'shortbow', 'recurve'],
+            'staff': ['staff', 'rod', 'scepter', 'cane'],
+            'shield': ['shield', 'buckler', 'aegis', 'guard'],
+            'dagger': ['dagger', 'knife', 'stiletto', 'dirk'],
+            'spear': ['spear', 'pike', 'lance', 'javelin'],
+            'wand': ['wand', 'focus', 'catalyst', 'channel'],
+            'mace': ['mace', 'morningstar', 'flail', 'club'],
+            'crossbow': ['crossbow', 'arbalest', 'ballista'],
+            'greatsword': ['greatsword', 'claymore', 'zweihander'],
+            'halberd': ['halberd', 'poleaxe', 'partisan'],
+            'katana': ['katana', 'wakizashi', 'nodachi'],
+            'scythe': ['scythe', 'reaper', 'harvester'],
+            'helmet': ['helmet', 'crown', 'circlet', 'helm', 'coif', 'hat', 'cap'],
+            'chestplate': ['chestplate', 'breastplate', 'cuirass', 'vest', 'mail', 'armor', 'tunic', 'robe'],
+            'leggings': ['leggings', 'greaves', 'pants', 'chausses', 'legguards', 'trousers'],
+            'gauntlets': ['gauntlets', 'gloves', 'mittens', 'handguards', 'bracers', 'hands'],
+            'boots': ['boots', 'shoes', 'sabatons', 'footguards', 'treads', 'sandals']
+        }
+        
+        # Check if the name contains appropriate keywords for the item type
+        keywords = type_keywords.get(item_type_lower, [item_type_lower])
+        for keyword in keywords:
+            if keyword in name_lower:
+                return True
+        
+        # Don't allow obviously wrong combinations (like potions for armor)
+        wrong_keywords = ['potion', 'elixir', 'brew', 'tonic', 'draught', 'flask', 'bottle']
+        for wrong in wrong_keywords:
+            if wrong in name_lower and item_type_lower not in ['wand', 'staff']:  # These can be magical
+                return False
+        
+        # If no specific match found, allow it (better to have a slightly off name than generic)
+        return True
 
     def _get_fallback_event(self, event_type: str, participants: List[Dict]) -> Dict:
         """Fallback event templates when AI is unavailable"""
@@ -324,12 +369,18 @@ Requirements:
                         winner['user_id'], min_quality, max_quality
                     )
                 
-                # Use AI-generated item names
-                if 'item_names' in event_data and event_data['item_names']:
-                    item_found.name = random.choice(event_data['item_names'])
-                else:
-                    # Fallback to generic name
-                    item_found.name = f"Treasure {item_found.name}"
+                # Replace the generated name with AI-themed name if available
+                if item_found and 'item_names' in event_data and event_data['item_names']:
+                    ai_name = random.choice(event_data['item_names'])
+                    # Only use AI name if it makes sense for the item type
+                    if self._name_matches_item_type(ai_name, item_found.type.value):
+                        # Update the item name in the database
+                        self.db.execute(
+                            "UPDATE inventory SET name = ? WHERE id = ?",
+                            (ai_name, item_found.id)
+                        )
+                        self.db.commit()
+                        item_found.name = ai_name
                 
                 self.create_item_in_db(item_found)
             
@@ -448,12 +499,18 @@ Requirements:
                         participant['user_id'], min_quality, max_quality
                     )
                 
-                # Use AI-generated item names
-                if 'item_names' in event_data and event_data['item_names']:
-                    item_found.name = random.choice(event_data['item_names'])
-                else:
-                    # Fallback to generic name
-                    item_found.name = f"Boss {item_found.name}"
+                # Replace the generated name with AI-themed name if available
+                if item_found and 'item_names' in event_data and event_data['item_names']:
+                    ai_name = random.choice(event_data['item_names'])
+                    # Only use AI name if it makes sense for the item type
+                    if self._name_matches_item_type(ai_name, item_found.type.value):
+                        # Update the item name in the database
+                        self.db.execute(
+                            "UPDATE inventory SET name = ? WHERE id = ?",
+                            (ai_name, item_found.id)
+                        )
+                        self.db.commit()
+                        item_found.name = ai_name
                 
                 self.create_item_in_db(item_found)
             
