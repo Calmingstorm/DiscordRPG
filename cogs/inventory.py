@@ -124,26 +124,39 @@ class InventoryCog(DiscordRPGCog):
         for item in page_items:
             equipped_text = "🟢 **EQUIPPED**" if item['equipped'] else ""
             
+            # Check for upgrade level
+            upgrade_level = item.get('upgrade_level', 0)
+            upgrade_text = f" +{upgrade_level}" if upgrade_level > 0 else ""
+            upgrade_mult = 1.0 + (0.05 * upgrade_level)
+            
             # Show different stats for armor vs weapons
             if item.get('slot_type') in ['head', 'chest', 'legs', 'hands', 'feet']:
-                # Armor piece - show armor bonuses
+                # Armor piece - show armor bonuses (with upgrade multiplier)
                 armor_stats = []
+                effective_armor = int(item['armor'] * upgrade_mult)
                 if item['armor'] > 0:
-                    armor_stats.append(f"{item['armor']}🛡️")
+                    armor_stats.append(f"{effective_armor}🛡️")
+                effective_health = int(item.get('health_bonus', 0) * upgrade_mult)
                 if item.get('health_bonus', 0) > 0:
-                    armor_stats.append(f"{item['health_bonus']}❤️")
+                    armor_stats.append(f"{effective_health}❤️")
+                effective_speed = int(item.get('speed_bonus', 0) * upgrade_mult)
                 if item.get('speed_bonus', 0) > 0:
-                    armor_stats.append(f"{item['speed_bonus']}💨")
+                    armor_stats.append(f"{effective_speed}💨")
+                effective_luck = item.get('luck_bonus', 0) * upgrade_mult
                 if item.get('luck_bonus', 0) > 0:
-                    armor_stats.append(f"{item['luck_bonus']:.2f}🍀")
+                    armor_stats.append(f"{effective_luck:.2f}🍀")
+                effective_crit = item.get('crit_bonus', 0) * upgrade_mult
                 if item.get('crit_bonus', 0) > 0:
-                    armor_stats.append(f"{item['crit_bonus']:.1%}💥")
+                    armor_stats.append(f"{effective_crit:.1%}💥")
+                effective_magic = int(item.get('magic_bonus', 0) * upgrade_mult)
                 if item.get('magic_bonus', 0) > 0:
-                    armor_stats.append(f"{item['magic_bonus']}✨")
+                    armor_stats.append(f"{effective_magic}✨")
                 stats = " ".join(armor_stats) or "No bonuses"
             else:
-                # Weapon - show damage and armor
-                stats = f"{item['damage']}⚔️ {item['armor']}🛡️"
+                # Weapon - show damage and armor (with upgrade multiplier)
+                effective_damage = int(item['damage'] * upgrade_mult)
+                effective_armor = int(item['armor'] * upgrade_mult)
+                stats = f"{effective_damage}⚔️ {effective_armor}🛡️"
             
             value_text = f"💰 {item['value']:,}" if item['value'] > 0 else ""
             # Determine slot type based on item type if not specified
@@ -165,7 +178,7 @@ class InventoryCog(DiscordRPGCog):
                 slot_type = 'Weapon'
             
             embed.add_field(
-                name=f"[{item['id']}] {item['name']} {equipped_text}",
+                name=f"[{item['id']}] {item['name']}{upgrade_text} {equipped_text}",
                 value=f"`{item['type']}` ({slot_type}) • {stats} • {value_text}",
                 inline=False
             )
@@ -227,21 +240,35 @@ class InventoryCog(DiscordRPGCog):
         if not items:
             embed.description = "No items equipped. Use `!equip <item_id>` to equip items."
         else:
-            total_damage = sum(item['damage'] for item in items)
-            total_armor = sum(item['armor'] for item in items)
-            
-            # Calculate armor bonuses
-            total_health_bonus = sum(item.get('health_bonus', 0) for item in items)
-            total_speed_bonus = sum(item.get('speed_bonus', 0) for item in items)
-            total_luck_bonus = sum(item.get('luck_bonus', 0.0) for item in items)
-            total_crit_bonus = sum(item.get('crit_bonus', 0.0) for item in items)
-            total_magic_bonus = sum(item.get('magic_bonus', 0) for item in items)
+            # Calculate effective stats with upgrade bonuses
+            total_damage = 0
+            total_armor = 0
+            total_health_bonus = 0
+            total_speed_bonus = 0
+            total_luck_bonus = 0.0
+            total_crit_bonus = 0.0
+            total_magic_bonus = 0
             total_value = sum(item['value'] for item in items)
             
             equipment_text = []
             for item in items:
-                stats = f"{item['damage']}⚔️ {item['armor']}🛡️"
-                equipment_text.append(f"**{item['name']}** - `{item['type']}` ({stats})")
+                upgrade_level = item.get('upgrade_level', 0)
+                upgrade_mult = 1.0 + (0.05 * upgrade_level)
+                upgrade_text = f" +{upgrade_level}" if upgrade_level > 0 else ""
+                
+                # Calculate effective stats
+                eff_damage = int(item['damage'] * upgrade_mult)
+                eff_armor = int(item['armor'] * upgrade_mult)
+                total_damage += eff_damage
+                total_armor += eff_armor
+                total_health_bonus += int(item.get('health_bonus', 0) * upgrade_mult)
+                total_speed_bonus += int(item.get('speed_bonus', 0) * upgrade_mult)
+                total_luck_bonus += item.get('luck_bonus', 0.0) * upgrade_mult
+                total_crit_bonus += item.get('crit_bonus', 0.0) * upgrade_mult
+                total_magic_bonus += int(item.get('magic_bonus', 0) * upgrade_mult)
+                
+                stats = f"{eff_damage}⚔️ {eff_armor}🛡️"
+                equipment_text.append(f"**{item['name']}{upgrade_text}** - `{item['type']}` ({stats})")
                 
             embed.add_field(
                 name="📋 Equipped Items",
@@ -405,9 +432,17 @@ class InventoryCog(DiscordRPGCog):
         else:
             rarity = "Common"
             color = 0x808080
+        
+        # Get upgrade level and calculate effective stats
+        upgrade_level = item.get('upgrade_level', 0)
+        upgrade_mult = 1.0 + (0.05 * upgrade_level)
+        upgrade_text = f" +{upgrade_level}" if upgrade_level > 0 else ""
+        
+        effective_damage = int(item['damage'] * upgrade_mult)
+        effective_armor = int(item['armor'] * upgrade_mult)
             
         embed = discord.Embed(
-            title=f"{item['name']}",
+            title=f"{item['name']}{upgrade_text}",
             color=discord.Color(color)
         )
         
@@ -415,10 +450,18 @@ class InventoryCog(DiscordRPGCog):
         embed.add_field(name="Rarity", value=rarity, inline=True)
         embed.add_field(name="Slot", value=(item.get('slot_type') or 'weapon').title(), inline=True)
         
-        # Basic stats
-        embed.add_field(name="⚔️ Damage", value=item['damage'], inline=True)
-        embed.add_field(name="🛡️ Armor", value=item['armor'], inline=True)
+        # Basic stats (show effective if upgraded)
+        if upgrade_level > 0:
+            embed.add_field(name="⚔️ Damage", value=f"{effective_damage} ({item['damage']} +{int((upgrade_mult-1)*100)}%)", inline=True)
+            embed.add_field(name="🛡️ Armor", value=f"{effective_armor} ({item['armor']} +{int((upgrade_mult-1)*100)}%)", inline=True)
+        else:
+            embed.add_field(name="⚔️ Damage", value=item['damage'], inline=True)
+            embed.add_field(name="🛡️ Armor", value=item['armor'], inline=True)
         embed.add_field(name="💰 Value", value=f"{item['value']:,}", inline=True)
+        
+        # Upgrade level info
+        if upgrade_level > 0:
+            embed.add_field(name="⬆️ Upgrade Level", value=f"+{upgrade_level} ({int((upgrade_mult-1)*100)}% bonus)", inline=True)
         
         # Armor bonuses (only show if they exist)
         armor_bonuses = []

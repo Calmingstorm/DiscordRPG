@@ -73,6 +73,20 @@ class HelpCog(DiscordRPGCog):
             inline=True
         )
         
+        # Blacksmith
+        blacksmith_commands = [
+            "`!blacksmith` - View materials & services",
+            "`!dismantle <id>` - Salvage for materials",
+            "`!dismantle all <rarity>` - Bulk salvage",
+            "`!reforge <id>` - Reroll stats (keep rarity)",
+            "`!upgrade <id>` - Enhance item (+5%/lvl)"
+        ]
+        embed.add_field(
+            name="⚒️ **Blacksmith**",
+            value="\n".join(blacksmith_commands),
+            inline=True
+        )
+        
         # Economy & Trading
         economy_commands = [
             "`!market` - Browse marketplace",

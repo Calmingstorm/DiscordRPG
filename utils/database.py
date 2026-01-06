@@ -75,6 +75,24 @@ class Database:
                     conn.execute(f"ALTER TABLE inventory ADD COLUMN {col_name} {col_def}")
                     print(f"Added {col_name} column to inventory table")
             
+            # Add upgrade_level to inventory if missing
+            if 'upgrade_level' not in inv_columns:
+                conn.execute("ALTER TABLE inventory ADD COLUMN upgrade_level INTEGER DEFAULT 0")
+                print("Added upgrade_level column to inventory table")
+            
+            conn.commit()
+            
+            # Add blacksmith material columns to profile
+            if 'material_scrap' not in columns:
+                conn.execute("ALTER TABLE profile ADD COLUMN material_scrap INTEGER DEFAULT 0")
+                print("Added material_scrap column to profile table")
+            if 'material_dust' not in columns:
+                conn.execute("ALTER TABLE profile ADD COLUMN material_dust INTEGER DEFAULT 0")
+                print("Added material_dust column to profile table")
+            if 'material_essence' not in columns:
+                conn.execute("ALTER TABLE profile ADD COLUMN material_essence INTEGER DEFAULT 0")
+                print("Added material_essence column to profile table")
+            
             conn.commit()
 
             # Create epic_adventures table if it doesn't exist

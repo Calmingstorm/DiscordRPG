@@ -1,6 +1,6 @@
 """Item system with types, stats, and equipment handling"""
 from enum import Enum
-from typing import Dict, Optional, Tuple, List
+from typing import Dict, Optional, Tuple, List, Any
 import random
 import math
 
@@ -47,6 +47,30 @@ class ItemRarity(Enum):
     LEGENDARY = "legendary"
     MYTHIC = "mythic"
     DIVINE = "divine"
+    
+    @staticmethod
+    def get_stat_range(rarity: 'ItemRarity') -> Tuple[int, int]:
+        """Get (min, max) stat total for a rarity tier"""
+        ranges = {
+            ItemRarity.COMMON: (1, 9),
+            ItemRarity.UNCOMMON: (10, 19),
+            ItemRarity.RARE: (20, 29),
+            ItemRarity.MAGIC: (30, 39),
+            ItemRarity.LEGENDARY: (40, 44),
+            ItemRarity.MYTHIC: (45, 49),
+            ItemRarity.DIVINE: (50, 50)
+        }
+        return ranges.get(rarity, (1, 9))
+    
+    @staticmethod
+    def get_material_tier(rarity: 'ItemRarity') -> str:
+        """Get material type for dismantling/crafting based on rarity"""
+        if rarity in [ItemRarity.COMMON, ItemRarity.UNCOMMON]:
+            return 'scrap'
+        elif rarity in [ItemRarity.RARE, ItemRarity.MAGIC]:
+            return 'dust'
+        else:  # LEGENDARY, MYTHIC, DIVINE
+            return 'essence'
 
 class Item:
     """Represents a single item with stats"""
@@ -55,7 +79,8 @@ class Item:
                  value: int = 0, damage: int = 0, armor: int = 0, 
                  hand: ItemHand = ItemHand.ANY, equipped: bool = False,
                  health_bonus: int = 0, speed_bonus: int = 0, luck_bonus: float = 0.0,
-                 crit_bonus: float = 0.0, magic_bonus: int = 0, slot_type: str = None):
+                 crit_bonus: float = 0.0, magic_bonus: int = 0, slot_type: Optional[str] = None,
+                 upgrade_level: int = 0):
         self.id = item_id
         self.owner_id = owner_id
         self.name = name
@@ -73,6 +98,46 @@ class Item:
         self.crit_bonus = crit_bonus
         self.magic_bonus = magic_bonus
         self.slot_type = slot_type
+        self.upgrade_level = upgrade_level
+    
+    def _get_upgrade_multiplier(self) -> float:
+        """Get stat multiplier based on upgrade level"""
+        return 1.0 + (0.05 * self.upgrade_level)
+    
+    @property
+    def effective_damage(self) -> int:
+        """Damage with upgrade bonus applied"""
+        return int(self.damage * self._get_upgrade_multiplier())
+    
+    @property
+    def effective_armor(self) -> int:
+        """Armor with upgrade bonus applied"""
+        return int(self.armor * self._get_upgrade_multiplier())
+    
+    @property
+    def effective_health_bonus(self) -> int:
+        """Health bonus with upgrade bonus applied"""
+        return int(self.health_bonus * self._get_upgrade_multiplier())
+    
+    @property
+    def effective_speed_bonus(self) -> int:
+        """Speed bonus with upgrade bonus applied"""
+        return int(self.speed_bonus * self._get_upgrade_multiplier())
+    
+    @property
+    def effective_luck_bonus(self) -> float:
+        """Luck bonus with upgrade bonus applied"""
+        return self.luck_bonus * self._get_upgrade_multiplier()
+    
+    @property
+    def effective_crit_bonus(self) -> float:
+        """Crit bonus with upgrade bonus applied"""
+        return self.crit_bonus * self._get_upgrade_multiplier()
+    
+    @property
+    def effective_magic_bonus(self) -> int:
+        """Magic bonus with upgrade bonus applied"""
+        return int(self.magic_bonus * self._get_upgrade_multiplier())
         
     @property
     def stat_total(self) -> int:
@@ -412,6 +477,65 @@ class ItemGenerator:
             item_type = random.choice(armor_types)
         
         return ItemGenerator.generate_item(owner_id, min_stat, max_stat, item_type)
+
+    @staticmethod
+    def reroll_item(item: Item) -> Dict[str, Any]:
+        """
+        Reroll an item's stats while preserving its rarity tier.
+        Returns dict of new stats (not applied - caller should update DB)
+        """
+        # Get current rarity and its stat range
+        current_rarity = item.rarity
+        min_stat, max_stat = ItemRarity.get_stat_range(current_rarity)
+        
+        # Generate new total within rarity range
+        new_total = random.randint(min_stat, max_stat)
+        
+        # Get stat distribution for this item type
+        stat_ratios = ItemGenerator.get_type_stats(item.type)
+        
+        # Initialize all stats
+        new_stats = {
+            'damage': 0,
+            'armor': 0,
+            'health_bonus': 0,
+            'speed_bonus': 0,
+            'luck_bonus': 0.0,
+            'crit_bonus': 0.0,
+            'magic_bonus': 0
+        }
+        
+        # Distribute stats based on item type ratios
+        for stat, ratio in stat_ratios.items():
+            allocated_points = int(new_total * ratio)
+            
+            if stat == 'damage':
+                new_stats['damage'] = allocated_points
+            elif stat == 'armor':
+                new_stats['armor'] = allocated_points
+            elif stat == 'health':
+                new_stats['health_bonus'] = allocated_points
+            elif stat == 'speed':
+                new_stats['speed_bonus'] = allocated_points
+            elif stat == 'luck':
+                new_stats['luck_bonus'] = allocated_points / 100.0
+            elif stat == 'crit':
+                new_stats['crit_bonus'] = allocated_points / 100.0
+            elif stat == 'magic':
+                new_stats['magic_bonus'] = allocated_points
+        
+        # Generate new name based on new stats
+        new_stats['name'] = ItemGenerator.generate_name(
+            item.type, 
+            new_stats['damage'], 
+            new_stats['armor'], 
+            new_total
+        )
+        
+        # Recalculate value
+        new_stats['value'] = new_total * random.randint(80, 120)
+        
+        return new_stats
 
 class CrateSystem:
     """Handles crate opening and rewards"""
