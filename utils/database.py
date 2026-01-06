@@ -96,6 +96,21 @@ class Database:
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_epic_adventures_user ON epic_adventures(user_id, status)")
             conn.commit()
+            
+            # Fix NULL slot_type values - infer from item type
+            conn.execute("""
+                UPDATE inventory SET slot_type = 'weapon' 
+                WHERE slot_type IS NULL AND type IN 
+                ('Sword', 'Axe', 'Hammer', 'Mace', 'Dagger', 'Knife', 'Spear', 
+                 'Wand', 'Staff', 'Bow', 'Crossbow', 'Greatsword', 'Halberd', 'Katana', 'Scythe')
+            """)
+            conn.execute("UPDATE inventory SET slot_type = 'shield' WHERE slot_type IS NULL AND type = 'Shield'")
+            conn.execute("UPDATE inventory SET slot_type = 'head' WHERE slot_type IS NULL AND type = 'Helmet'")
+            conn.execute("UPDATE inventory SET slot_type = 'chest' WHERE slot_type IS NULL AND type = 'Chestplate'")
+            conn.execute("UPDATE inventory SET slot_type = 'legs' WHERE slot_type IS NULL AND type = 'Leggings'")
+            conn.execute("UPDATE inventory SET slot_type = 'hands' WHERE slot_type IS NULL AND type = 'Gauntlets'")
+            conn.execute("UPDATE inventory SET slot_type = 'feet' WHERE slot_type IS NULL AND type = 'Boots'")
+            conn.commit()
                 
         except Exception as e:
             print(f"Migration error: {e}")
