@@ -57,6 +57,26 @@ class Database:
                 conn.commit()
                 print("Added alignment column to profile table")
 
+            # Check for inventory bonus stats
+            cursor = conn.execute("PRAGMA table_info(inventory)")
+            inv_columns = [row[1] for row in cursor.fetchall()]
+            
+            inventory_updates = [
+                ('health_bonus', 'INTEGER DEFAULT 0'),
+                ('speed_bonus', 'INTEGER DEFAULT 0'),
+                ('luck_bonus', 'REAL DEFAULT 0.0'),
+                ('crit_bonus', 'REAL DEFAULT 0.0'),
+                ('magic_bonus', 'INTEGER DEFAULT 0'),
+                ('slot_type', 'TEXT')
+            ]
+            
+            for col_name, col_def in inventory_updates:
+                if col_name not in inv_columns:
+                    conn.execute(f"ALTER TABLE inventory ADD COLUMN {col_name} {col_def}")
+                    print(f"Added {col_name} column to inventory table")
+            
+            conn.commit()
+
             # Create epic_adventures table if it doesn't exist
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS epic_adventures (
