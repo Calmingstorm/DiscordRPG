@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS profile (
     level INTEGER DEFAULT 1,
     class TEXT DEFAULT 'Novice',
     race TEXT DEFAULT 'Human',
+    health INTEGER DEFAULT 100,
+    speed INTEGER DEFAULT 10,
     pvpwins INTEGER DEFAULT 0,
     pvplosses INTEGER DEFAULT 0,
     deaths INTEGER DEFAULT 0,
