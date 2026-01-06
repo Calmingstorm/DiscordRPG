@@ -85,11 +85,21 @@ class AutoRegisterCog(DiscordRPGCog):
                 """INSERT OR IGNORE INTO profile 
                    (user_id, name, level, xp, money, race, class, health, speed, luck, created_at)
                    VALUES (?, ?, 1, 0, 100, 'Human', 'Novice', 100, 10, 1, ?)""",
-                (member.id, char_name, datetime.now().isoformat())
+                (member.id, char_name, datetime.now(EST))
             )
             
             # Check if the insert actually happened (rowcount > 0)
             if cursor.rowcount > 0:
+                # Create starter items
+                self.db.execute(
+                    "INSERT INTO inventory (owner, name, type, value, damage, armor, hand, equipped) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+                    (member.id, "Starter Sword", "Sword", 10, 3, 0, "left")
+                )
+                self.db.execute(
+                    "INSERT INTO inventory (owner, name, type, value, damage, armor, hand, equipped) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+                    (member.id, "Starter Shield", "Shield", 10, 0, 3, "right")
+                )
+                
                 self.db.commit()
                 return True
             else:
@@ -116,11 +126,11 @@ class AutoRegisterCog(DiscordRPGCog):
             
             # Create starter items
             self.db.execute(
-                "INSERT INTO inventory (owner, name, type, value, damage, armor, hand) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO inventory (owner, name, type, value, damage, armor, hand, equipped) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
                 (member.id, "Starter Sword", "Sword", 10, 3, 0, "left")
             )
             self.db.execute(
-                "INSERT INTO inventory (owner, name, type, value, damage, armor, hand) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO inventory (owner, name, type, value, damage, armor, hand, equipped) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
                 (member.id, "Starter Shield", "Shield", 10, 0, 3, "right")
             )
             
