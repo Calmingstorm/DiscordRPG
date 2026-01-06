@@ -53,11 +53,17 @@ def check_dependencies():
         'openai',  # Optional but recommended
     ]
     
+    package_map = {
+        'python-dotenv': 'dotenv',
+        'discord.py': 'discord'
+    }
+    
     missing_packages = []
     
     for package in required_packages:
+        import_name = package_map.get(package, package.replace('-', '_').replace('.py', ''))
         try:
-            __import__(package.replace('-', '_').replace('.py', ''))
+            __import__(import_name)
         except ImportError:
             missing_packages.append(package)
     
