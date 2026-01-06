@@ -121,6 +121,7 @@ class DiscordRPGBot(commands.Bot):
             "cogs.oracle",  # AI-powered game manual and help system
             "cogs.ai_events",  # AI-powered dynamic event generation
             "cogs.backup",  # Database backup system
+            "cogs.blacksmith",  # Dismantle, reforge, upgrade items
         ]
         
         for cog in cog_files:
