@@ -310,11 +310,28 @@ CREATE TABLE IF NOT EXISTS divine_blessings (
     purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Epic/Legendary Adventures table
+CREATE TABLE IF NOT EXISTS epic_adventures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES profile(user_id) ON DELETE CASCADE,
+    adventure_type TEXT,
+    adventure_name TEXT,
+    difficulty INTEGER,
+    started_at TEXT,
+    finish_at TEXT,
+    base_xp_reward INTEGER,
+    base_gold_reward INTEGER,
+    item_quality_min INTEGER,
+    item_quality_max INTEGER,
+    status TEXT DEFAULT 'active'
+);
+
 -- Indices for performance
 CREATE INDEX IF NOT EXISTS idx_inventory_owner ON inventory(owner);
 CREATE INDEX IF NOT EXISTS idx_inventory_equipped ON inventory(owner, equipped);
 CREATE INDEX IF NOT EXISTS idx_market_price ON market(price);
 CREATE INDEX IF NOT EXISTS idx_adventures_user ON adventures(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_epic_adventures_user ON epic_adventures(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_battle_logs_users ON battle_logs(attacker, defender);
 CREATE INDEX IF NOT EXISTS idx_transactions_users ON transactions(from_user, to_user);
 CREATE INDEX IF NOT EXISTS idx_cooldowns_user ON cooldowns(user_id);
