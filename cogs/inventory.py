@@ -296,7 +296,7 @@ class InventoryCog(DiscordRPGCog):
         # Simple equipment logic
         hand = item['hand']
         item_type = item['type']
-        slot_type = item.get('slot_type', 'weapon')
+        slot_type = item.get('slot_type') or 'weapon'
         
         # Define weapon types that conflict with each other
         weapon_types = ['Sword', 'Axe', 'Hammer', 'Mace', 'Dagger', 'Knife', 'Spear', 'Wand', 'Staff', 'Bow', 'Crossbow', 'Greatsword', 'Halberd', 'Katana', 'Scythe']
@@ -305,7 +305,7 @@ class InventoryCog(DiscordRPGCog):
         # Check for conflicts
         conflicts = []
         for eq_item in equipped_items:
-            eq_slot_type = eq_item.get('slot_type', 'weapon')
+            eq_slot_type = eq_item.get('slot_type') or 'weapon'
             
             # Armor slot conflicts - only one item per armor slot
             if slot_type in armor_slots and eq_slot_type == slot_type:
@@ -326,7 +326,7 @@ class InventoryCog(DiscordRPGCog):
                     conflicts.append(eq_item)
                 # "Any" hand conflicts when both hands full
                 elif hand == 'any' and eq_item['hand'] in ['left', 'right', 'any']:
-                    if len([x for x in equipped_items if x.get('slot_type', 'weapon') == 'weapon' and x['hand'] in ['left', 'right', 'any']]) >= 2:
+                    if len([x for x in equipped_items if (x.get('slot_type') or 'weapon') == 'weapon' and x['hand'] in ['left', 'right', 'any']]) >= 2:
                         conflicts.append(eq_item)
                     
         # Unequip conflicting items
