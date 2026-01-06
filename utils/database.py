@@ -56,6 +56,26 @@ class Database:
                 conn.execute("ALTER TABLE profile ADD COLUMN alignment TEXT DEFAULT 'neutral'")
                 conn.commit()
                 print("Added alignment column to profile table")
+
+            # Create epic_adventures table if it doesn't exist
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS epic_adventures (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER REFERENCES profile(user_id) ON DELETE CASCADE,
+                    adventure_type TEXT,
+                    adventure_name TEXT,
+                    difficulty INTEGER,
+                    started_at TEXT,
+                    finish_at TEXT,
+                    base_xp_reward INTEGER,
+                    base_gold_reward INTEGER,
+                    item_quality_min INTEGER,
+                    item_quality_max INTEGER,
+                    status TEXT DEFAULT 'active'
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_epic_adventures_user ON epic_adventures(user_id, status)")
+            conn.commit()
                 
         except Exception as e:
             print(f"Migration error: {e}")
