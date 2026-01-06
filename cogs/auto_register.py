@@ -84,7 +84,7 @@ class AutoRegisterCog(DiscordRPGCog):
             cursor = self.db.execute(
                 """INSERT OR IGNORE INTO profile 
                    (user_id, name, level, xp, money, race, class, health, speed, luck, created_at)
-                   VALUES (?, ?, 1, 0, 100, 'Human', 'Novice', 100, 1, 1, ?)""",
+                   VALUES (?, ?, 1, 0, 100, 'Human', 'Novice', 100, 10, 1, ?)""",
                 (member.id, char_name, datetime.now().isoformat())
             )
             
