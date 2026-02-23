@@ -8,16 +8,16 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from bot import DiscordRPGCog
-from utils.database import Database
 
 class RaceCog(DiscordRPGCog):
     """Race selection and management"""
     
     @staticmethod
-    def get_race_multipliers(user_id: int) -> dict:
+    def get_race_multipliers(user_id: int, db=None) -> dict:
         """Get race multipliers for a user"""
-        from utils.database import Database
-        db = Database()
+        if db is None:
+            from utils.database import Database
+            db = Database()
         char = db.get_character(user_id)
         if not char:
             return {"luck": 1.0, "xp_gain": 1.0, "gold_find": 1.0, "favor_gain": 1.0}
@@ -175,8 +175,7 @@ class RaceCog(DiscordRPGCog):
             return
         
         # Check if player exists
-        db = Database()
-        player = db.get_profile(ctx.author.id)
+        player = self.db.get_profile(ctx.author.id)
         if not player:
             await ctx.send("❌ You need to create a character first! Use `!create <name>` to join the game.")
             return
@@ -242,7 +241,7 @@ class RaceCog(DiscordRPGCog):
                 return
             
             # Update player's race
-            db.update_profile(ctx.author.id, race=race_data['name'])
+            self.db.update_profile(ctx.author.id, race=race_data['name'])
             
             embed = self.embed(
                 f"🧬 Race Selected: {race_data['name']}!",

@@ -215,7 +215,7 @@ class HelpCog(DiscordRPGCog):
         )
         embed.add_field(name="Language", value="Python", inline=True)
         embed.add_field(name="Library", value="discord.py", inline=True)
-        embed.add_field(name="Database", value="SQLite", inline=True)
+        embed.add_field(name="Database", value="MariaDB", inline=True)
         embed.add_field(name="Servers", value=len(ctx.bot.guilds), inline=True)
         embed.add_field(name="Users", value="Many!", inline=True)
         
@@ -226,8 +226,8 @@ class HelpCog(DiscordRPGCog):
         )
         
         embed.add_field(
-            name="Coming Soon",
-            value="• Combat & battles\n• Guilds & alliances\n• Economy & trading\n• Adventures & quests\n• Special events",
+            name="Also Available",
+            value="• Gambling & casino games\n• Guilds & alliances\n• Market & trading\n• Daily rewards & streaks\n• AI-powered dynamic events",
             inline=False
         )
         

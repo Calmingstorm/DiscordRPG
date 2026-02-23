@@ -143,7 +143,7 @@ class AutoPlayCog(DiscordRPGCog):
             for char in all_chars:
                 user = self.bot.get_user(char['user_id'])
                 if user and self.is_user_online(user):
-                    # Convert sqlite3.Row to dict before appending
+                    # Ensure dict format
                     available_chars.append(self.db.row_to_dict(char))
             
             if not available_chars:
@@ -306,7 +306,7 @@ class AutoPlayCog(DiscordRPGCog):
             for char in all_chars:
                 user = self.bot.get_user(char['user_id'])
                 if user and self.is_user_online(user):
-                    # Convert sqlite3.Row to dict before appending
+                    # Ensure dict format
                     available_chars.append(self.db.row_to_dict(char))
                     
             chars = available_chars
@@ -400,8 +400,8 @@ class AutoPlayCog(DiscordRPGCog):
         
         # Get race multipliers and blessing bonuses
         from cogs.race import RaceCog
-        winner_multipliers = RaceCog.get_race_multipliers(result['winner']['user_id'])
-        loser_multipliers = RaceCog.get_race_multipliers(result['loser']['user_id'])
+        winner_multipliers = RaceCog.get_race_multipliers(result['winner']['user_id'], self.db)
+        loser_multipliers = RaceCog.get_race_multipliers(result['loser']['user_id'], self.db)
 
         # Get divine blessing bonuses
         winner_blessing_mult = 1.0
@@ -578,13 +578,13 @@ class AutoPlayCog(DiscordRPGCog):
         loser_rewards = []
         
         for member in winning_team:
-            # Convert sqlite3.Row to dict for name access
+            # Ensure dict format for name access
             member_dict = self.db.row_to_dict(member) if hasattr(member, '_fields') else member
             winner_xp, winner_gold, item_text = await self.apply_team_rewards(member, "3v3", True)
             winner_rewards.append(f"**{member_dict['name']}**: +{winner_xp} XP, +{winner_gold} gold{item_text}")
             
         for member in losing_team:
-            # Convert sqlite3.Row to dict for name access
+            # Ensure dict format for name access
             member_dict = self.db.row_to_dict(member) if hasattr(member, '_fields') else member
             loser_xp, _, item_text = await self.apply_team_rewards(member, "3v3", False)
             loser_rewards.append(f"**{member_dict['name']}**: +{loser_xp} XP{item_text}")
@@ -685,13 +685,13 @@ class AutoPlayCog(DiscordRPGCog):
         loser_rewards = []
         
         for member in winning_team:
-            # Convert sqlite3.Row to dict for name access
+            # Ensure dict format for name access
             member_dict = self.db.row_to_dict(member) if hasattr(member, '_fields') else member
             winner_xp, winner_gold, item_text = await self.apply_team_rewards(member, "5v5", True)
             winner_rewards.append(f"**{member_dict['name']}**: +{winner_xp} XP, +{winner_gold} gold{item_text}")
             
         for member in losing_team:
-            # Convert sqlite3.Row to dict for name access
+            # Ensure dict format for name access
             member_dict = self.db.row_to_dict(member) if hasattr(member, '_fields') else member
             loser_xp, _, item_text = await self.apply_team_rewards(member, "5v5", False)
             loser_rewards.append(f"**{member_dict['name']}**: +{loser_xp} XP{item_text}")
@@ -793,13 +793,13 @@ class AutoPlayCog(DiscordRPGCog):
         loser_rewards = []
         
         for member in winning_team:
-            # Convert sqlite3.Row to dict for name access
+            # Ensure dict format for name access
             member_dict = self.db.row_to_dict(member) if hasattr(member, '_fields') else member
             winner_xp, winner_gold, item_text = await self.apply_team_rewards(member, "10v10", True)
             winner_rewards.append(f"**{member_dict['name']}**: +{winner_xp} XP, +{winner_gold} gold{item_text}")
             
         for member in losing_team:
-            # Convert sqlite3.Row to dict for name access
+            # Ensure dict format for name access
             member_dict = self.db.row_to_dict(member) if hasattr(member, '_fields') else member
             loser_xp, _, item_text = await self.apply_team_rewards(member, "10v10", False)
             loser_rewards.append(f"**{member_dict['name']}**: +{loser_xp} XP{item_text}")
@@ -829,8 +829,8 @@ class AutoPlayCog(DiscordRPGCog):
     
     def calculate_battle_power(self, char):
         """Calculate battle power for a character"""
-        # Convert sqlite3.Row to dict if needed
-        if hasattr(char, '_fields'):  # sqlite3.Row object
+        # Ensure dict format
+        if hasattr(char, '_fields'):  # Legacy row object guard
             char_dict = self.db.row_to_dict(char)
         else:
             char_dict = char
@@ -850,8 +850,8 @@ class AutoPlayCog(DiscordRPGCog):
     
     async def apply_team_rewards(self, member, battle_type, is_winner):
         """Apply team battle rewards and return formatted values"""
-        # Convert sqlite3.Row to dict if needed
-        if hasattr(member, '_fields'):  # sqlite3.Row object
+        # Ensure dict format
+        if hasattr(member, '_fields'):  # Legacy row object guard
             member_dict = self.db.row_to_dict(member)
         else:
             member_dict = member
@@ -861,7 +861,7 @@ class AutoPlayCog(DiscordRPGCog):
 
         # Get race multipliers
         from cogs.race import RaceCog
-        multipliers = RaceCog.get_race_multipliers(member_dict['user_id'])
+        multipliers = RaceCog.get_race_multipliers(member_dict['user_id'], self.db)
 
         # Get divine blessing bonuses
         blessing_xp_mult = 1.0
@@ -950,7 +950,7 @@ class AutoPlayCog(DiscordRPGCog):
             for char in all_chars:
                 user = self.bot.get_user(char['user_id'])
                 if user and self.is_user_online(user):
-                    # Convert sqlite3.Row to dict before appending
+                    # Ensure dict format
                     chars.append(self.db.row_to_dict(char))
                     
             if not chars:
@@ -1010,7 +1010,7 @@ class AutoPlayCog(DiscordRPGCog):
             elif event_type == 'lucky_day':
                 # Random character gets a rare item (could be armor!)
                 lucky_char = random.choice(chars)
-                # Convert sqlite3.Row to dict if needed
+                # Ensure dict format
                 if hasattr(lucky_char, '_fields'):
                     lucky_char_dict = self.db.row_to_dict(lucky_char)
                 else:
@@ -1200,7 +1200,7 @@ class AutoPlayCog(DiscordRPGCog):
             for adventure in completed:
                 user = self.bot.get_user(adventure['user_id'])
                 if user and self.is_user_online(user):
-                    # Convert sqlite3.Row to dict before appending
+                    # Ensure dict format
                     online_completed.append(self.db.row_to_dict(adventure))
             
             if online_completed:
@@ -1258,7 +1258,7 @@ class AutoPlayCog(DiscordRPGCog):
 
                             # Get race multipliers
                             from cogs.race import RaceCog
-                            race_multipliers = RaceCog.get_race_multipliers(adventure['user_id'])
+                            race_multipliers = RaceCog.get_race_multipliers(adventure['user_id'], self.db)
 
                             # Get divine blessing bonuses (multiplicative for XP/gold)
                             blessing_xp_mult = 1.0
@@ -1452,7 +1452,7 @@ class AutoPlayCog(DiscordRPGCog):
 
                         # Get race multipliers
                         from cogs.race import RaceCog
-                        race_multipliers = RaceCog.get_race_multipliers(adventure['user_id'])
+                        race_multipliers = RaceCog.get_race_multipliers(adventure['user_id'], self.db)
 
                         # Get divine blessing bonuses
                         blessing_xp_mult = 1.0
@@ -1724,9 +1724,11 @@ class AutoPlayCog(DiscordRPGCog):
             return
         
         # Check if adventure is completed
-        finish_time = datetime.fromisoformat(active_adventure['finish_at'])
+        finish_time = active_adventure['finish_at']
+        if isinstance(finish_time, str):
+            finish_time = datetime.fromisoformat(finish_time)
         current_time = datetime.now()
-        
+
         if current_time >= finish_time:
             # Adventure is complete - process completion
             char_data = self.db.get_character(ctx.author.id)
@@ -1795,7 +1797,7 @@ class AutoPlayCog(DiscordRPGCog):
 
             # Get race multipliers
             from cogs.race import RaceCog
-            race_multipliers = RaceCog.get_race_multipliers(ctx.author.id)
+            race_multipliers = RaceCog.get_race_multipliers(ctx.author.id, self.db)
 
             # Calculate rewards using new scaling system
             final_xp = calculate_xp_reward(
@@ -1903,7 +1905,9 @@ class AutoPlayCog(DiscordRPGCog):
             minutes = int((remaining.total_seconds() % 3600) // 60)
             
             # Calculate progress percentage
-            start_time = datetime.fromisoformat(active_adventure['started_at'])
+            start_time = active_adventure['started_at']
+            if isinstance(start_time, str):
+                start_time = datetime.fromisoformat(start_time)
             total_duration = finish_time - start_time
             elapsed = current_time - start_time
             progress_percent = (elapsed.total_seconds() / total_duration.total_seconds()) * 100

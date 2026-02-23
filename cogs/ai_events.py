@@ -226,9 +226,9 @@ Requirements:
                         logger.info(f"Cleaned JSON: {json_content}")
                         return json.loads(json_content)
                         
-                except:
+                except (json.JSONDecodeError, ValueError, KeyError):
                     pass
-                
+
                 # Final fallback: extract content manually
                 lines = content.split('\n')
                 title = lines[0].replace('"', '').replace('Title:', '').replace('title:', '').strip()
@@ -396,7 +396,7 @@ Requirements:
             
             # Get race multipliers
             from cogs.race import RaceCog
-            race_multipliers = RaceCog.get_race_multipliers(winner['user_id'])
+            race_multipliers = RaceCog.get_race_multipliers(winner['user_id'], self.db)
 
             # Get divine blessing bonuses
             blessing_xp_mult = 1.0
@@ -532,7 +532,7 @@ Requirements:
 
             # Get race multipliers
             from cogs.race import RaceCog
-            race_multipliers = RaceCog.get_race_multipliers(participant['user_id'])
+            race_multipliers = RaceCog.get_race_multipliers(participant['user_id'], self.db)
 
             # Get divine blessing bonuses
             blessing_xp_mult = 1.0
@@ -881,11 +881,9 @@ Requirements:
         await asyncio.sleep(initial_delay)
 
     @commands.command()
+    @commands.has_permissions(administrator=True)
     async def aieventsstatus(self, ctx: commands.Context):
         """Check AI events system status (Admin only)"""
-        if not await self.is_admin(ctx.author.id):
-            await ctx.send("❌ This command is admin-only.")
-            return
             
         embed = self.embed("🎲 AI Events System Status", "Current status of dynamic AI events")
         

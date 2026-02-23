@@ -55,10 +55,13 @@ class BackupCog(DiscordRPGCog):
             db_name = os.getenv('DB_NAME', 'discordrpg')
             db_host = os.getenv('DB_HOST', 'localhost')
 
+            env = os.environ.copy()
+            env['MYSQL_PWD'] = db_pass
+
             result = subprocess.run(
-                ['mysqldump', '-h', db_host, '-u', db_user, f'-p{db_pass}',
+                ['mysqldump', '-h', db_host, '-u', db_user,
                  '--single-transaction', '--routines', '--triggers', db_name],
-                capture_output=True, timeout=120
+                capture_output=True, timeout=120, env=env
             )
 
             if result.returncode != 0:
@@ -109,9 +112,12 @@ class BackupCog(DiscordRPGCog):
             with gz.open(backup_path, 'rb') as f:
                 sql_data = f.read()
 
+            env = os.environ.copy()
+            env['MYSQL_PWD'] = db_pass
+
             result = subprocess.run(
-                ['mysql', '-h', db_host, '-u', db_user, f'-p{db_pass}', db_name],
-                input=sql_data, capture_output=True, timeout=120
+                ['mysql', '-h', db_host, '-u', db_user, db_name],
+                input=sql_data, capture_output=True, timeout=120, env=env
             )
 
             if result.returncode != 0:
@@ -128,11 +134,10 @@ class BackupCog(DiscordRPGCog):
         backups = []
         try:
             for filename in os.listdir(self.backup_dir):
-                if ('discordrpg_backup' in filename and
-                        (filename.endswith('.sql.gz') or filename.endswith('.db.gz'))):
+                if ('discordrpg_backup' in filename and filename.endswith('.sql.gz')):
                     file_path = os.path.join(self.backup_dir, filename)
                     stat = os.stat(file_path)
-                    parts = filename.replace('.sql.gz', '').replace('.db.gz', '').split('_')
+                    parts = filename.replace('.sql.gz', '').split('_')
                     backup_type = parts[2] if len(parts) > 2 else "unknown"
                     try:
                         ts = '_'.join(parts[3:5]) if len(parts) > 4 else parts[3]

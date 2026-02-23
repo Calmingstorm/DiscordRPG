@@ -243,7 +243,10 @@ class CharacterCog(DiscordRPGCog):
                     if blessing['effect'] == 'adventure_success':
                         blessing_text.append(f"✨ {blessing['blessing_name']}")
                     else:
-                        time_left = datetime.fromisoformat(blessing['expires_at']) - datetime.now()
+                        expires_at = blessing['expires_at']
+                        if isinstance(expires_at, str):
+                            expires_at = datetime.fromisoformat(expires_at)
+                        time_left = expires_at - datetime.now()
                         minutes_left = max(0, int(time_left.total_seconds() // 60))
                         blessing_text.append(f"✨ {blessing['blessing_name']} ({minutes_left}m)")
 

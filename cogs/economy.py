@@ -4,6 +4,7 @@ from discord.ext import commands
 import math
 import asyncio
 import random
+from datetime import datetime
 
 import sys
 import os
@@ -45,7 +46,7 @@ class EconomyCog(DiscordRPGCog):
             try:
                 owner = self.bot.get_user(item['owner'])
                 owner_name = owner.display_name if owner else f"User{item['owner']}"
-            except:
+            except Exception:
                 owner_name = f"User{item['owner']}"
             
             # Add slot type for armor
@@ -64,7 +65,7 @@ class EconomyCog(DiscordRPGCog):
         """Format item stats including all bonuses"""
         stats = []
         
-        # Helper function to safely get values from both dict and sqlite3.Row objects
+        # Helper function to safely get values with defaults
         def get_val(key, default=0):
             try:
                 return item[key] if item[key] is not None else default
@@ -278,9 +279,9 @@ class EconomyCog(DiscordRPGCog):
         """Visit the item shop"""
         embed = self.embed("🏪 Item Shop", "Welcome to the shop!")
         
-        # Daily shop items (generated daily)
+        # Daily shop items (rotate daily)
         import hashlib
-        today = ctx.bot.user.created_at.strftime('%Y%m%d')  # Use bot creation date as seed
+        today = datetime.now().strftime('%Y%m%d')
         seed = int(hashlib.md5(today.encode()).hexdigest()[:8], 16)
         random.seed(seed)
         

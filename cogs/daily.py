@@ -72,7 +72,7 @@ class DailyCog(DiscordRPGCog):
                 (gold_reward, xp_reward, today, new_streak, ctx.author.id, today)
             )
             
-            if updated_rows == 0:
+            if updated_rows.rowcount == 0:
                 await ctx.send("❌ You've already claimed your daily reward today!")
                 return
                 

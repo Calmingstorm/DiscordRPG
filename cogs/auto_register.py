@@ -87,9 +87,9 @@ class AutoRegisterCog(DiscordRPGCog):
             
             # Use INSERT OR IGNORE to handle concurrent registrations atomically
             cursor = self.db.execute(
-                """INSERT OR IGNORE INTO profile 
-                   (user_id, name, level, xp, money, race, class, health, speed, luck, created_at)
-                   VALUES (?, ?, 1, 0, 100, 'Human', 'Novice', 100, 1, 1, ?)""",
+                """INSERT OR IGNORE INTO profile
+                   (user_id, name, level, xp, money, race, class, luck, created_at)
+                   VALUES (?, ?, 1, 0, 100, 'Human', 'Novice', 1, ?)""",
                 (member.id, char_name, datetime.now().isoformat())
             )
             
@@ -168,22 +168,27 @@ class AutoRegisterCog(DiscordRPGCog):
             
         # Confirm deletion
         if not await ctx.confirm(
-            f"Are you sure you want to delete **{char['name']}**?\\n"
-            f"Level {char['level']} • {char['xp']:,} XP • {char['money']:,} gold\\n"
+            f"Are you sure you want to delete **{char['name']}**?\n"
+            f"Level {char['level']} • {char['xp']:,} XP • {char['money']:,} gold\n"
             f"This action cannot be undone!"
         ):
             await ctx.send("Character deletion cancelled.")
             return
             
         # Delete character and all related data
-        self.db.execute("DELETE FROM profile WHERE user_id = ?", (ctx.author.id,))
+        # Delete market listings for items owned by this user
+        self.db.execute(
+            "DELETE FROM market WHERE item_id IN (SELECT id FROM inventory WHERE owner = ?)",
+            (ctx.author.id,)
+        )
         self.db.execute("DELETE FROM inventory WHERE owner = ?", (ctx.author.id,))
         self.db.execute("DELETE FROM adventures WHERE user_id = ?", (ctx.author.id,))
-        self.db.execute("DELETE FROM market WHERE owner = ?", (ctx.author.id,))
+        # Profile deletion cascades to cooldowns, divine_blessings, etc. via FK
+        self.db.execute("DELETE FROM profile WHERE user_id = ?", (ctx.author.id,))
         self.db.commit()
         
         embed = self.success_embed(
-            f"Character **{char['name']}** has been deleted.\\n"
+            f"Character **{char['name']}** has been deleted.\n"
             f"Thank you for playing DiscordRPG!"
         )
         await ctx.send(embed=embed)

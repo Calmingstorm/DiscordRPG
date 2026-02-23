@@ -333,7 +333,7 @@ class OracleCog(DiscordRPGCog):
                 if quest_cog:
                     await quest_cog.check_and_update_progress(user_id, 'items_sell', len(sold_items))
                     await quest_cog.check_and_update_progress(user_id, 'gold_earn', total_value)
-            except:
+            except Exception:
                 pass  # Silently ignore quest tracking errors
 
             # Create mystical response

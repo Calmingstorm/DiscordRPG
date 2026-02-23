@@ -58,20 +58,22 @@ class GamblingCog(DiscordRPGCog):
         result = random.choice(['heads', 'tails'])
         won = result == player_choice
 
-        # Update money
+        # Update money atomically
         if won:
             winnings = amount
+            self.db.execute("UPDATE profile SET money = money + ? WHERE user_id = ?", (winnings, ctx.author.id))
+            self.db.commit()
             new_money = char_data['money'] + winnings
             result_text = f"**You win {winnings:,} gold!**"
             color = discord.Color.green()
             await self.update_quest_progress(ctx.author.id, 'gold_earn', winnings)
         else:
+            self.db.execute("UPDATE profile SET money = money - ? WHERE user_id = ?", (amount, ctx.author.id))
+            self.db.commit()
             new_money = char_data['money'] - amount
             result_text = f"**You lose {amount:,} gold!**"
             color = discord.Color.red()
             await self.update_quest_progress(ctx.author.id, 'gold_spend', amount)
-
-        self.db.update_character(ctx.author.id, money=new_money)
 
         # Log transaction
         self.db.log_transaction(
@@ -140,22 +142,24 @@ class GamblingCog(DiscordRPGCog):
         else:  # No match
             multiplier = 0
 
-        # Apply winnings/losses
+        # Apply winnings/losses atomically
         if multiplier > 0:
             winnings = amount * multiplier
-            new_money = char_data['money'] + winnings - amount
+            net_gain = winnings - amount
+            self.db.execute("UPDATE profile SET money = money + ? WHERE user_id = ?", (net_gain, ctx.author.id))
+            self.db.commit()
+            new_money = char_data['money'] + net_gain
             result_text = f"**You win {winnings:,} gold!** ({multiplier}x multiplier)"
             color = discord.Color.green()
-            net_gain = winnings - amount
             if net_gain > 0:
                 await self.update_quest_progress(ctx.author.id, 'gold_earn', net_gain)
         else:
+            self.db.execute("UPDATE profile SET money = money - ? WHERE user_id = ?", (amount, ctx.author.id))
+            self.db.commit()
             new_money = char_data['money'] - amount
             result_text = f"**You lose {amount:,} gold!**"
             color = discord.Color.red()
             await self.update_quest_progress(ctx.author.id, 'gold_spend', amount)
-
-        self.db.update_character(ctx.author.id, money=new_money)
 
         # Create spinning animation
         embed = self.embed("🎰 Slot Machine", "Spinning...")
@@ -255,8 +259,9 @@ class GamblingCog(DiscordRPGCog):
             return
         elif player_bj:
             winnings = int(amount * 1.5)
+            self.db.execute("UPDATE profile SET money = money + ? WHERE user_id = ?", (winnings, ctx.author.id))
+            self.db.commit()
             new_money = char_data['money'] + winnings
-            self.db.update_character(ctx.author.id, money=new_money)
             await self.update_quest_progress(ctx.author.id, 'gold_earn', winnings)
 
             embed = self.embed("🃏 Blackjack!", f"You win {winnings:,} gold!")
@@ -266,8 +271,9 @@ class GamblingCog(DiscordRPGCog):
             await ctx.send(embed=embed)
             return
         elif dealer_bj:
+            self.db.execute("UPDATE profile SET money = money - ? WHERE user_id = ?", (amount, ctx.author.id))
+            self.db.commit()
             new_money = char_data['money'] - amount
-            self.db.update_character(ctx.author.id, money=new_money)
             await self.update_quest_progress(ctx.author.id, 'gold_spend', amount)
 
             embed = self.embed("🃏 Dealer Blackjack", f"You lose {amount:,} gold!")
@@ -310,8 +316,9 @@ class GamblingCog(DiscordRPGCog):
 
         # Check for bust
         if player_value > 21:
+            self.db.execute("UPDATE profile SET money = money - ? WHERE user_id = ?", (amount, ctx.author.id))
+            self.db.commit()
             new_money = char_data['money'] - amount
-            self.db.update_character(ctx.author.id, money=new_money)
             await self.update_quest_progress(ctx.author.id, 'gold_spend', amount)
 
             embed = self.embed("🃏 Bust!", f"You lose {amount:,} gold!")
@@ -329,17 +336,23 @@ class GamblingCog(DiscordRPGCog):
         # Determine winner
         if dealer_value > 21:
             winnings = amount
+            self.db.execute("UPDATE profile SET money = money + ? WHERE user_id = ?", (winnings, ctx.author.id))
+            self.db.commit()
             new_money = char_data['money'] + winnings
             result = f"Dealer busts! You win {winnings:,} gold!"
             color = discord.Color.green()
             await self.update_quest_progress(ctx.author.id, 'gold_earn', winnings)
         elif player_value > dealer_value:
             winnings = amount
+            self.db.execute("UPDATE profile SET money = money + ? WHERE user_id = ?", (winnings, ctx.author.id))
+            self.db.commit()
             new_money = char_data['money'] + winnings
             result = f"You win {winnings:,} gold!"
             color = discord.Color.green()
             await self.update_quest_progress(ctx.author.id, 'gold_earn', winnings)
         elif dealer_value > player_value:
+            self.db.execute("UPDATE profile SET money = money - ? WHERE user_id = ?", (amount, ctx.author.id))
+            self.db.commit()
             new_money = char_data['money'] - amount
             result = f"Dealer wins! You lose {amount:,} gold!"
             color = discord.Color.red()
@@ -348,8 +361,6 @@ class GamblingCog(DiscordRPGCog):
             new_money = char_data['money']
             result = "Push! No money exchanged."
             color = discord.Color.blue()
-
-        self.db.update_character(ctx.author.id, money=new_money)
 
         embed = discord.Embed(title="🃏 Blackjack Results", description=result, color=color)
         embed.add_field(name="Your Hand", value=format_hand(player_hand), inline=False)
@@ -392,11 +403,15 @@ class GamblingCog(DiscordRPGCog):
                 multiplier = 1.0
 
             winnings = int(amount * multiplier)
+            self.db.execute("UPDATE profile SET money = money + ? WHERE user_id = ?", (winnings, ctx.author.id))
+            self.db.commit()
             new_money = char_data['money'] + winnings
             result = f"**You win {winnings:,} gold!** ({multiplier}x)"
             color = discord.Color.green()
             await self.update_quest_progress(ctx.author.id, 'gold_earn', winnings)
         elif house_roll > player_roll:
+            self.db.execute("UPDATE profile SET money = money - ? WHERE user_id = ?", (amount, ctx.author.id))
+            self.db.commit()
             new_money = char_data['money'] - amount
             result = f"**You lose {amount:,} gold!**"
             color = discord.Color.red()
@@ -405,8 +420,6 @@ class GamblingCog(DiscordRPGCog):
             new_money = char_data['money']
             result = "**It's a tie! No money lost.**"
             color = discord.Color.blue()
-
-        self.db.update_character(ctx.author.id, money=new_money)
 
         embed = discord.Embed(
             title="🎲 Dice Roll",
@@ -451,28 +464,30 @@ class GamblingCog(DiscordRPGCog):
 
         if won:
             winnings = amount * 2
-            new_money = char_data['money'] + winnings
             result_text = f"🎉 **JACKPOT!** You win {winnings:,} gold!"
             color = discord.Color.gold()
 
             if amount >= 5000:
                 xp_bonus = random.randint(10, 25)
-                self.db.update_character(
-                    ctx.author.id,
-                    money=new_money,
-                    xp=char_data['xp'] + xp_bonus
+                self.db.execute(
+                    "UPDATE profile SET money = money + ?, xp = xp + ? WHERE user_id = ?",
+                    (winnings, xp_bonus, ctx.author.id)
                 )
+                self.db.commit()
                 result_text += f"\n✨ Bonus: +{xp_bonus} XP!"
                 await self.update_quest_progress(ctx.author.id, 'xp_gain', xp_bonus)
                 await self.update_quest_progress(ctx.author.id, 'gold_earn', winnings)
             else:
-                self.db.update_character(ctx.author.id, money=new_money)
+                self.db.execute("UPDATE profile SET money = money + ? WHERE user_id = ?", (winnings, ctx.author.id))
+                self.db.commit()
                 await self.update_quest_progress(ctx.author.id, 'gold_earn', winnings)
+            new_money = char_data['money'] + winnings
         else:
+            self.db.execute("UPDATE profile SET money = money - ? WHERE user_id = ?", (amount, ctx.author.id))
+            self.db.commit()
             new_money = char_data['money'] - amount
             result_text = f"💸 **You lose {amount:,} gold!**"
             color = discord.Color.red()
-            self.db.update_character(ctx.author.id, money=new_money)
             await self.update_quest_progress(ctx.author.id, 'gold_spend', amount)
 
         # Log transaction

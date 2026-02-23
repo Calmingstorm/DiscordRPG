@@ -158,7 +158,7 @@ class ReligionCog(DiscordRPGCog):
         
         # Apply race bonus
         from cogs.race import RaceCog
-        race_multipliers = RaceCog.get_race_multipliers(ctx.author.id)
+        race_multipliers = RaceCog.get_race_multipliers(ctx.author.id, self.db)
         race_favor_bonus = int((base_favor + level_bonus) * race_multipliers.get('favor_gain', 1.0))
         
         # Random event chance (5%)
@@ -273,7 +273,7 @@ class ReligionCog(DiscordRPGCog):
         
         # Apply race bonus
         from cogs.race import RaceCog
-        race_multipliers = RaceCog.get_race_multipliers(ctx.author.id)
+        race_multipliers = RaceCog.get_race_multipliers(ctx.author.id, self.db)
         race_favor_bonus = multiplied_favor * race_multipliers.get('favor_gain', 1.0)
         final_favor = int(max(1, race_favor_bonus))  # Minimum 1 favor
         
@@ -445,9 +445,11 @@ class ReligionCog(DiscordRPGCog):
                         active_lines.append(f"**{b['blessing_name']}** - Ready (1 charge)")
                     else:
                         # Timed blessing - show remaining time
-                        expires_at = datetime.fromisoformat(b['expires_at'])
+                        expires_at = b['expires_at']
+                        if isinstance(expires_at, str):
+                            expires_at = datetime.fromisoformat(expires_at)
                         if expires_at > datetime.now():
-                            remaining_mins = (expires_at - datetime.now()).seconds // 60
+                            remaining_mins = int((expires_at - datetime.now()).total_seconds()) // 60
                             active_lines.append(f"**{b['blessing_name']}** - {remaining_mins}m remaining")
 
                 if active_lines:

@@ -214,13 +214,18 @@ class EpicAdventuresCog(DiscordRPGCog):
             return
         
         # Show active adventure
-        finish_time = datetime.fromisoformat(active['finish_at'])
+        finish_time = active['finish_at']
+        if isinstance(finish_time, str):
+            finish_time = datetime.fromisoformat(finish_time)
+        started_at = active['started_at']
+        if isinstance(started_at, str):
+            started_at = datetime.fromisoformat(started_at)
         remaining = finish_time - datetime.now()
         hours = int(remaining.total_seconds() // 3600)
         minutes = int((remaining.total_seconds() % 3600) // 60)
-        
-        progress_percent = ((datetime.now() - datetime.fromisoformat(active['started_at'])).total_seconds() / 
-                          (finish_time - datetime.fromisoformat(active['started_at'])).total_seconds() * 100)
+
+        progress_percent = ((datetime.now() - started_at).total_seconds() /
+                          (finish_time - started_at).total_seconds() * 100)
         
         # Progress bar
         filled = int(progress_percent // 10)
@@ -340,7 +345,7 @@ class EpicAdventuresCog(DiscordRPGCog):
                 if success:
                     # Get race multipliers
                     from cogs.race import RaceCog
-                    race_multipliers = RaceCog.get_race_multipliers(char.user_id)
+                    race_multipliers = RaceCog.get_race_multipliers(char.user_id, self.db)
 
                     # Get divine blessing bonuses
                     blessing_xp_mult = 1.0
@@ -456,7 +461,7 @@ class EpicAdventuresCog(DiscordRPGCog):
                 else:
                     # Failed adventure - consolation rewards (20% of success)
                     from cogs.race import RaceCog
-                    race_multipliers = RaceCog.get_race_multipliers(char.user_id)
+                    race_multipliers = RaceCog.get_race_multipliers(char.user_id, self.db)
 
                     # Small consolation XP based on level
                     final_xp = int((100 + get_level_bonus(char.level, 50)) * race_multipliers['xp_gain'] * 0.2)

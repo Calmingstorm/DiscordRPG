@@ -217,14 +217,32 @@ class Database:
         char.xp = data.get('xp', 0)
         char.money = data.get('money', 100)
         char.race = data.get('race', 'Human')
+        char.luck = data.get('luck', 1.0)
         return char
 
     def update_profile(self, user_id: int, **kwargs) -> bool:
         return self.update_character(user_id, **kwargs)
 
+    PROFILE_COLUMNS = {
+        'name', 'money', 'xp', 'level', 'class', 'race', 'pvpwins', 'pvplosses',
+        'deaths', 'kills', 'completed', 'god', 'favor', 'luck', 'marriage', 'guild',
+        'background', 'description', 'colour', 'donations', 'raidstats',
+        'atkmultiply', 'defmultiply', 'crates_common', 'crates_uncommon',
+        'crates_rare', 'crates_magic', 'crates_legendary', 'crates_mystery',
+        'last_date', 'streak', 'vote_ban', 'has_character', 'reset_points',
+        'last_adventure', 'adventure_alert', 'alignment',
+        'epic_adventures_completed', 'legendary_adventures_completed',
+        'last_epic_adventure', 'ascension_respec_used', 'previous_class',
+        'sell_confirmation',
+    }
+
     def update_character(self, user_id: int, **kwargs) -> bool:
         if not kwargs:
             return False
+        # Validate column names to prevent SQL injection
+        invalid = set(kwargs.keys()) - self.PROFILE_COLUMNS
+        if invalid:
+            raise ValueError(f"Invalid profile columns: {invalid}")
         if 'xp' in kwargs and 'level' not in kwargs:
             new_level = min(999, 1 + int((kwargs['xp'] / 100) ** 0.5))
             kwargs['level'] = new_level
@@ -322,6 +340,7 @@ class Database:
             self.commit()
             return True
         except Exception:
+            self.get_connection().rollback()
             return False
 
     def unequip_item_from_slot(self, user_id: int, slot: str) -> bool:
@@ -339,6 +358,7 @@ class Database:
                 return True
             return False
         except Exception:
+            self.get_connection().rollback()
             return False
 
     # --- Guild operations ---
@@ -405,18 +425,21 @@ class Database:
             price = market_dict['price']
             seller_id = market_dict['owner']
 
-            buyer_money_row = self.fetchone("SELECT money FROM profile WHERE user_id = ?", (buyer_id,))
-            buyer_money = self.row_to_dict(buyer_money_row)['money']
-            if buyer_money < price:
-                return False
+            # Atomic money deduction — WHERE clause ensures sufficient funds
+            cursor = self.execute(
+                "UPDATE profile SET money = money - ? WHERE user_id = ? AND money >= ?",
+                (price, buyer_id, price)
+            )
+            if cursor.rowcount == 0:
+                return False  # Insufficient funds
 
-            self.execute("UPDATE profile SET money = money - ? WHERE user_id = ?", (price, buyer_id))
             self.execute("UPDATE profile SET money = money + ? WHERE user_id = ?", (price, seller_id))
             self.execute("UPDATE inventory SET owner = ?, equipped = 0 WHERE id = ?", (buyer_id, item_id))
             self.execute("DELETE FROM market WHERE item_id = ?", (item_id,))
             self.commit()
             return True
         except Exception:
+            self.get_connection().rollback()
             return False
 
     # --- Adventure operations ---
@@ -424,15 +447,16 @@ class Database:
                         difficulty: int, duration_seconds: int) -> bool:
         try:
             finish_time = datetime.now().timestamp() + duration_seconds
-            self.execute(
+            self._execute_raw(
                 """INSERT INTO adventures (user_id, adventure_name, difficulty, finish_at)
-                   VALUES (?, ?, ?, FROM_UNIXTIME(%s))""",
+                   VALUES (%s, %s, %s, FROM_UNIXTIME(%s))""",
                 (user_id, adventure_name, difficulty, finish_time)
             )
-            self.execute("UPDATE profile SET last_adventure = NOW() WHERE user_id = %s", (user_id,))
+            self._execute_raw("UPDATE profile SET last_adventure = NOW() WHERE user_id = %s", (user_id,))
             self.commit()
             return True
         except Exception:
+            self.get_connection().rollback()
             return False
 
     def get_active_adventure(self, user_id: int) -> Optional[Dict[str, Any]]:
@@ -462,8 +486,8 @@ class Database:
 
     def set_cooldown(self, user_id: int, cooldown_type: str) -> bool:
         valid_cooldown_types = {
-            'daily', 'adventure', 'battle', 'prayer', 'sacrifice',
-            'blessing', 'raid', 'gambling', 'shop'
+            'daily', 'vote', 'adventure', 'pray', 'sacrifice',
+            'steal', 'hunt'
         }
         if cooldown_type not in valid_cooldown_types:
             return False

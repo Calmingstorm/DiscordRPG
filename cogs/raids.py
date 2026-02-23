@@ -145,7 +145,7 @@ class RaidsCog(DiscordRPGCog):
                 for guild in self.bot.guilds:
                     member = guild.get_member(user.id)
                     if member and member.status == discord.Status.online:
-                        # Convert sqlite3.Row to dict before appending
+                        # Ensure dict format
                         online_players.append(self.db.row_to_dict(char))
                         break
                         

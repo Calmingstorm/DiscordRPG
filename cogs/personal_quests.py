@@ -940,7 +940,7 @@ Generate exactly {total_chapters} chapters. Be creative, dramatic, and make it f
 
                     try:
                         await msg.edit(embed=embed)
-                    except:
+                    except Exception:
                         pass  # Ignore edit failures
 
                 await asyncio.sleep(1)  # Small delay between generations
@@ -985,7 +985,7 @@ Generate exactly {total_chapters} chapters. Be creative, dramatic, and make it f
 
                 try:
                     await msg.edit(embed=embed)
-                except:
+                except Exception:
                     # If edit fails, send new message
                     await channel.send(embed=embed)
 

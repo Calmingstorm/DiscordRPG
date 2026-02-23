@@ -51,7 +51,7 @@ class DiscordRPGBot(commands.Bot):
         # Get configuration from environment
         self.token = os.getenv('DISCORD_TOKEN')
         self.prefix = os.getenv('BOT_PREFIX', '!')
-        self.db_path = os.getenv('DATABASE_PATH', './discordrpg.db')
+        self.db_path = os.getenv('DATABASE_PATH', './discordrpg.db')  # Legacy, ignored by MariaDB Database class
         
         if not self.token:
             logger.error("DISCORD_TOKEN not found in environment variables!")
@@ -82,7 +82,7 @@ class DiscordRPGBot(commands.Bot):
                     "SELECT prefix FROM server_settings WHERE guild_id = ?",
                     (message.guild.id,)
                 )
-                # Convert sqlite3.Row to dict to safely access values
+                # Safely access dict values
                 prefix = self.db.row_to_dict(row)['prefix'] if row else self.prefix
                 self.prefixes[message.guild.id] = prefix
             else:
@@ -92,10 +92,10 @@ class DiscordRPGBot(commands.Bot):
     
     async def setup_hook(self):
         """Initialize bot components"""
-        # Connect to SQLite database
+        # Connect to MariaDB database
         self.db = Database(self.db_path)
         self.db.init_database()
-        logger.info(f"Initialized SQLite database at {self.db_path}")
+        logger.info("Initialized MariaDB database connection")
         
         # Load cogs
         await self.load_cogs()
@@ -209,9 +209,13 @@ class DiscordRPGCog(commands.Cog):
         """Get a specific field from character"""
         # Validate field name to prevent SQL injection
         valid_fields = {
-            'user_id', 'name', 'level', 'xp', 'money', 'race', 'class', 'health', 
-            'speed', 'luck', 'religion', 'adventure_cooldown', 'daily_streak',
-            'last_daily', 'created_at'
+            'user_id', 'name', 'level', 'xp', 'money', 'race', 'class', 'luck',
+            'pvpwins', 'pvplosses', 'deaths', 'kills', 'completed', 'god', 'favor',
+            'marriage', 'guild', 'alignment', 'streak', 'last_date', 'last_adventure',
+            'crates_common', 'crates_uncommon', 'crates_rare', 'crates_magic',
+            'crates_legendary', 'crates_mystery', 'atkmultiply', 'defmultiply',
+            'raidstats', 'has_character', 'reset_points', 'created_at',
+            'sell_confirmation', 'adventure_alert',
         }
         if field not in valid_fields:
             return None
@@ -285,11 +289,11 @@ commands.Context.confirm = confirm
 def cooldown_check(cooldown_name: str, seconds: int):
     """Check if user is on cooldown for specific action"""
     async def predicate(ctx: commands.Context):
-        cooldowns = await ctx.bot.db.get_cooldowns(ctx.author.id)
+        cooldowns = ctx.bot.db.get_cooldowns(ctx.author.id)
         last_use = cooldowns.get(cooldown_name)
-        
+
         if last_use:
-            time_passed = (datetime.now(EST) - last_use).total_seconds()
+            time_passed = (datetime.now() - last_use).total_seconds()
             if time_passed < seconds:
                 remaining = seconds - time_passed
                 await ctx.send(f"⏰ You can use this again in {remaining:.0f} seconds")
