@@ -19,6 +19,15 @@ class CombatCog(DiscordRPGCog):
     def __init__(self, bot):
         super().__init__(bot)
     
+    async def update_quest_progress(self, user_id: int, objective_type: str, amount: int = 1):
+        """Helper to update personal quest progress"""
+        try:
+            quest_cog = self.bot.get_cog('PersonalQuestsCog')
+            if quest_cog:
+                await quest_cog.check_and_update_progress(user_id, objective_type, amount)
+        except Exception as e:
+            pass  # Silently ignore quest tracking errors
+    
     @commands.command(aliases=["fight", "attack"])
     @has_character()
     @commands.cooldown(1, 300, commands.BucketType.user)  # 5 minute cooldown
@@ -94,9 +103,17 @@ class CombatCog(DiscordRPGCog):
         if winner == ctx.author:
             self.db.update_character(ctx.author.id, pvpwins=attacker_data['pvpwins'] + 1)
             self.db.update_character(opponent.id, pvplosses=opponent_data['pvplosses'] + 1)
+            # Update quest progress for winner
+            await self.update_quest_progress(ctx.author.id, 'pvp_wins', 1)
         else:
             self.db.update_character(ctx.author.id, pvplosses=attacker_data['pvplosses'] + 1)
             self.db.update_character(opponent.id, pvpwins=opponent_data['pvpwins'] + 1)
+            # Update quest progress for winner
+            await self.update_quest_progress(opponent.id, 'pvp_wins', 1)
+
+        # Track battles_total for both participants (win or lose counts)
+        await self.update_quest_progress(ctx.author.id, 'battles_total', 1)
+        await self.update_quest_progress(opponent.id, 'battles_total', 1)
             
         # Log battle
         self.db.execute(
@@ -522,6 +539,86 @@ class CombatCog(DiscordRPGCog):
         )
         
         embed.set_footer(text="Use !battlestatus to see current system status")
+        await ctx.send(embed=embed)
+
+    @commands.command()
+    @has_character()
+    async def smite(self, ctx: commands.Context, target: discord.Member = None):
+        """Smite another player for 20,000 gold (adds to their death count)"""
+        if not target:
+            await ctx.send("❌ You need to specify a target! Usage: `!smite @user`")
+            return
+        
+        if target.id == ctx.author.id:
+            await ctx.send("❌ You cannot smite yourself! That would be... unwise.")
+            return
+        
+        # Check if target has a character
+        target_data = self.db.get_character(target.id)
+        if not target_data:
+            await ctx.send(f"❌ {target.display_name} doesn't have a character yet!")
+            return
+        
+        # Check if user has enough gold
+        user_data = self.db.get_character(ctx.author.id)
+        smite_cost = 20000
+        
+        if user_data['money'] < smite_cost:
+            await ctx.send(f"❌ You need {smite_cost:,} gold to call down divine wrath! You only have {user_data['money']:,} gold.")
+            return
+        
+        # Deduct gold from user
+        self.db.update_character(ctx.author.id, money=user_data['money'] - smite_cost)
+        
+        # Add death to target
+        new_death_count = target_data['deaths'] + 1
+        self.db.update_character(target.id, deaths=new_death_count)
+        
+        # Random smite messages
+        smite_messages = [
+            f"⚡ **{ctx.author.display_name}** calls upon the gods! A massive lightning bolt crashes down from the heavens, reducing **{target.display_name}** to a smoking pile of ash!",
+            f"🔥 **{ctx.author.display_name}** channels divine fury! **{target.display_name}** is engulfed in holy flames and crumbles to dust, their screams echoing across the realm!",
+            f"💀 **{ctx.author.display_name}** speaks words of ancient power! The very earth opens beneath **{target.display_name}**, swallowing them into the abyss!",
+            f"❄️ **{ctx.author.display_name}** invokes the wrath of winter! **{target.display_name}** is instantly frozen solid, then shatters into a thousand crystalline pieces!",
+            f"🌪️ **{ctx.author.display_name}** summons a divine tornado! **{target.display_name}** is swept up in the tempest and torn apart by celestial winds!",
+            f"⚔️ **{ctx.author.display_name}** calls forth a spectral army! **{target.display_name}** is overwhelmed by ghostly warriors and falls beneath their ethereal blades!",
+            f"🌊 **{ctx.author.display_name}** commands the seas! A massive tidal wave crashes over **{target.display_name}**, dragging them down to the ocean's depths!",
+            f"☄️ **{ctx.author.display_name}** summons a meteor! **{target.display_name}** looks up just in time to see the blazing rock of doom before being obliterated!",
+            f"🕳️ **{ctx.author.display_name}** opens a portal to the void! **{target.display_name}** is sucked into the endless darkness, their existence erased from reality!",
+            f"⚡ **{ctx.author.display_name}** channels pure divine energy! **{target.display_name}** glows briefly with holy light before disintegrating into sparkles!",
+            f"🗲 **{ctx.author.display_name}** calls down judgment! A golden hammer of justice descends from the clouds, flattening **{target.display_name}** with divine authority!",
+            f"🔮 **{ctx.author.display_name}** casts the ultimate curse! **{target.display_name}** transforms into a frog, then immediately gets stepped on by a passing giant!"
+        ]
+        
+        chosen_message = random.choice(smite_messages)
+        
+        # Create dramatic embed
+        embed = self.embed(
+            "⚡ DIVINE SMITING ⚡", 
+            chosen_message
+        )
+        
+        embed.add_field(
+            name="💰 Cost of Divine Wrath",
+            value=f"**{ctx.author.display_name}** paid {smite_cost:,} gold",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="💀 Death Count",
+            value=f"**{target.display_name}** now has {new_death_count} death(s)",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="🙏 Divine Justice",
+            value="*The gods have spoken...*",
+            inline=False
+        )
+        
+        embed.color = discord.Color.gold()
+        embed.set_footer(text=f"⚡ {target.display_name} has been smited by divine intervention!")
+        
         await ctx.send(embed=embed)
 
 async def setup(bot):

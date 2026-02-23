@@ -109,7 +109,6 @@ class DiscordRPGBot(commands.Bot):
             "cogs.help",
             "cogs.inventory",
             "cogs.combat", 
-            "cogs.adventure",
             "cogs.epic_adventures",  # Epic and legendary adventures
             "cogs.economy",
             "cogs.daily",
@@ -121,6 +120,7 @@ class DiscordRPGBot(commands.Bot):
             "cogs.oracle",  # AI-powered game manual and help system
             "cogs.ai_events",  # AI-powered dynamic event generation
             "cogs.backup",  # Database backup system
+            "cogs.personal_quests",  # AI-generated personal quest lines
         ]
         
         for cog in cog_files:

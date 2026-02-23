@@ -114,7 +114,7 @@ class OracleCog(DiscordRPGCog):
                     "Paladin": "Starting class combining combat and divine magic",
                     "Archer": "Starting class focused on ranged combat and precision"
                 },
-                "Evolution": "Classes evolve at levels 5, 10, 15, 20, 25, 30 using !evolve command",
+                "Evolution": "Classes evolve at levels 5, 10, 15, 20, 25, 30, 50, 100 using !evolve command",
                 "Requirements": "Must reach the required level to access new class options"
             }
             
@@ -149,7 +149,7 @@ class OracleCog(DiscordRPGCog):
         mechanics = {
             "leveling": {
                 "formula": "level = 1 + int((xp / 100) ** 0.5)",
-                "max_level": 50,
+                "max_level": 999,
                 "experience": "Gained from adventures, battles, and various activities"
             },
             "equipment": {
@@ -165,7 +165,8 @@ class OracleCog(DiscordRPGCog):
             "economy": {
                 "currency": "Gold pieces",
                 "sources": "Adventures, daily rewards, selling items, gambling, market trading",
-                "spending": "Buy from market/shop, gambling, listing fees, equipment"
+                "spending": "Buy from market/shop, gambling, listing fees, equipment",
+                "market": "Use !offer to list items, !buy to purchase, !withdraw to remove your listing"
             },
             "religion": {
                 "gods": "Choose deity with !choose <god> - affects available blessings",
@@ -223,6 +224,136 @@ class OracleCog(DiscordRPGCog):
         }
         return systems
     
+    def _calculate_item_sell_price(self, item: Dict) -> int:
+        """Calculate the sell price for an item (matches inventory.py logic)"""
+        return max(item['value'] // 4, (item['damage'] + item['armor']) * 10)
+    
+    def _calculate_item_total_stats(self, item: Dict) -> int:
+        """Calculate total stat value for an item"""
+        return (item['damage'] + item['armor'] + 
+                item.get('health_bonus', 0) + item.get('speed_bonus', 0) + 
+                item.get('magic_bonus', 0) + 
+                int(item.get('luck_bonus', 0) * 100) + 
+                int(item.get('crit_bonus', 0) * 100))
+    
+    async def _oracle_sell_items(self, user_id: int, exclude_ids: list = None) -> str:
+        """Oracle performs the actual selling of non-upgrade unequipped items"""
+        try:
+            # Get user inventory
+            inventory = self.db.fetchall(
+                "SELECT id, name, type, damage, armor, value, equipped, slot_type, "
+                "health_bonus, speed_bonus, luck_bonus, crit_bonus, magic_bonus "
+                "FROM inventory WHERE owner = ? ORDER BY id DESC",
+                (user_id,)
+            )
+
+            # Get equipped items for comparison
+            equipped = self.db.get_equipped_items(user_id)
+
+            # Get items currently listed on market - these must NOT be sold
+            market_items = self.db.fetchall(
+                "SELECT item_id FROM market WHERE item_id IN (SELECT id FROM inventory WHERE owner = ?)",
+                (user_id,)
+            )
+            market_item_ids = {item['item_id'] for item in market_items}
+
+            exclude_set = set(exclude_ids or [])
+            exclude_set.update(market_item_ids)  # Add market items to exclusion list
+            
+            # Analyze items to determine what to sell
+            items_to_sell = []
+            total_value = 0
+            
+            for item in inventory:
+                item_dict = self.db.row_to_dict(item)
+                
+                # Skip equipped or excluded items
+                if item_dict['equipped'] or item_dict['id'] in exclude_set:
+                    continue
+                
+                # Calculate item stats
+                item_stats = self._calculate_item_total_stats(item_dict)
+                
+                # Check if this item would be an upgrade to any equipped item of the same type
+                is_upgrade = False
+                item_slot = item_dict.get('slot_type', 'weapon')
+                item_type = item_dict['type']
+                
+                # Compare with equipped items in same slot
+                for eq_item in equipped:
+                    eq_slot = eq_item.get('slot_type', 'weapon')
+                    eq_type = eq_item['type']
+                    
+                    # Check if they compete for the same slot
+                    if ((item_slot == eq_slot) or 
+                        (item_type == 'Shield' and eq_type == 'Shield') or
+                        (item_type in ['Sword', 'Axe', 'Hammer', 'Mace', 'Dagger', 'Knife', 'Spear', 'Wand', 'Staff', 'Bow', 'Crossbow', 'Greatsword', 'Halberd', 'Katana', 'Scythe'] and
+                         eq_type in ['Sword', 'Axe', 'Hammer', 'Mace', 'Dagger', 'Knife', 'Spear', 'Wand', 'Staff', 'Bow', 'Crossbow', 'Greatsword', 'Halberd', 'Katana', 'Scythe'])):
+                        
+                        eq_stats = self._calculate_item_total_stats(eq_item)
+
+                        # Only consider it an upgrade if significantly better (20% or 10 points)
+                        upgrade_threshold = max(eq_stats * 0.2, 10)
+                        if item_stats > eq_stats + upgrade_threshold:
+                            is_upgrade = True
+                            break
+                
+                # Only sell if it's not an upgrade and has reasonable stats (avoid selling potentially good items)
+                if not is_upgrade and item_stats < 100:  # Conservative threshold
+                    sell_price = self._calculate_item_sell_price(item_dict)
+                    items_to_sell.append((item_dict, sell_price))
+                    total_value += sell_price
+            
+            if not items_to_sell:
+                return "🔮 *The Oracle gazes upon thy possessions...* All thy unequipped items possess value for thy journey. I shall not burden thee by disposing of potential treasures."
+            
+            # Perform the actual sales
+            char_data = self.db.get_character(user_id)
+            sold_items = []
+            
+            for item, sell_price in items_to_sell:
+                # Delete item
+                self.db.delete_item(item['id'])
+                
+                # Log transaction
+                self.db.log_transaction(
+                    user_id, None, sell_price, "oracle_item_sale",
+                    {"item": item['name'], "item_id": item['id']}
+                )
+                
+                sold_items.append(item['name'])
+            
+            # Update money
+            new_money = char_data['money'] + total_value
+            self.db.update_character(user_id, money=new_money)
+
+            # Track quest progress
+            try:
+                quest_cog = self.bot.get_cog('PersonalQuestsCog')
+                if quest_cog:
+                    await quest_cog.check_and_update_progress(user_id, 'items_sell', len(sold_items))
+                    await quest_cog.check_and_update_progress(user_id, 'gold_earn', total_value)
+            except:
+                pass  # Silently ignore quest tracking errors
+
+            # Create mystical response
+            if len(sold_items) == 1:
+                return (f"🔮 *The Oracle channels mystical energies...* ✨\n\n"
+                       f"I have disposed of **{sold_items[0]}** for thee, converting it to **{total_value:,} gold**.\n\n"
+                       f"Thy purse now holds **{new_money:,} gold**. The burden has been lifted from thy inventory.")
+            else:
+                items_text = "• " + "\n• ".join(sold_items[:5])
+                if len(sold_items) > 5:
+                    items_text += f"\n• ... and {len(sold_items) - 5} more items"
+                    
+                return (f"🔮 *The Oracle weaves powerful transmutation magic...* ✨\n\n"
+                       f"I have transformed **{len(sold_items)} inferior items** into **{total_value:,} gold** for thee:\n\n"
+                       f"{items_text}\n\n"
+                       f"Thy treasury now contains **{new_money:,} gold**. The weak artifacts have been cleansed from thy possession.")
+                       
+        except Exception as e:
+            return f"🔮 *The mystical energies falter...* An error occurred while disposing of thy items: {str(e)}"
+    
     def _get_user_context(self, user_id: int) -> Dict[str, Any]:
         """Get current user context for personalized responses"""
         try:
@@ -233,8 +364,83 @@ class OracleCog(DiscordRPGCog):
             # Get equipped items
             equipped = self.db.get_equipped_items(user_id)
             
+            # Get full inventory details
+            inventory = self.db.fetchall(
+                "SELECT id, name, type, damage, armor, hand, equipped, value, "
+                "health_bonus, speed_bonus, luck_bonus, crit_bonus, magic_bonus, slot_type "
+                "FROM inventory WHERE owner = ? ORDER BY equipped DESC, id DESC",
+                (user_id,)
+            )
+            
+            # Convert inventory to detailed list
+            inventory_details = []
+            for item in inventory:
+                item_dict = self.db.row_to_dict(item)
+                sell_price = self._calculate_item_sell_price(item_dict)
+                total_stats = (item_dict['damage'] + item_dict['armor'] + 
+                             item_dict.get('health_bonus', 0) + item_dict.get('speed_bonus', 0) + 
+                             item_dict.get('magic_bonus', 0) + 
+                             int(item_dict.get('luck_bonus', 0) * 100) + 
+                             int(item_dict.get('crit_bonus', 0) * 100))
+                             
+                inventory_details.append({
+                    "id": item_dict['id'],
+                    "name": item_dict['name'],
+                    "type": item_dict['type'],
+                    "equipped": bool(item_dict['equipped']),
+                    "damage": item_dict['damage'],
+                    "armor": item_dict['armor'],
+                    "value": item_dict['value'],
+                    "sell_price": sell_price,
+                    "total_stats": total_stats,
+                    "slot": item_dict.get('slot_type', 'weapon'),
+                    "hand": item_dict.get('hand', 'any'),
+                    "bonuses": {
+                        "health": item_dict.get('health_bonus', 0),
+                        "speed": item_dict.get('speed_bonus', 0),
+                        "luck": item_dict.get('luck_bonus', 0),
+                        "crit": item_dict.get('crit_bonus', 0),
+                        "magic": item_dict.get('magic_bonus', 0)
+                    }
+                })
+            
             # Get active adventure
             active_adventure = self.db.get_active_adventure(user_id)
+            
+            # Calculate total equipped stats including bonuses
+            total_equipped_stats = {
+                "damage": sum(item.get('damage', 0) for item in equipped),
+                "armor": sum(item.get('armor', 0) for item in equipped),
+                "health_bonus": sum(item.get('health_bonus', 0) for item in equipped),
+                "speed_bonus": sum(item.get('speed_bonus', 0) for item in equipped),
+                "luck_bonus": sum(item.get('luck_bonus', 0.0) for item in equipped),
+                "crit_bonus": sum(item.get('crit_bonus', 0.0) for item in equipped),
+                "magic_bonus": sum(item.get('magic_bonus', 0) for item in equipped)
+            }
+            
+            # Get detailed equipped items list for comparison
+            equipped_details = []
+            for item in equipped:
+                equipped_details.append({
+                    "id": item['id'],
+                    "name": item['name'],
+                    "type": item['type'],
+                    "slot": item.get('slot_type', 'weapon'),
+                    "damage": item['damage'],
+                    "armor": item['armor'],
+                    "total_stats": (item['damage'] + item['armor'] + 
+                                  item.get('health_bonus', 0) + item.get('speed_bonus', 0) + 
+                                  item.get('magic_bonus', 0) + 
+                                  int(item.get('luck_bonus', 0) * 100) + 
+                                  int(item.get('crit_bonus', 0) * 100)),
+                    "bonuses": {
+                        "health": item.get('health_bonus', 0),
+                        "speed": item.get('speed_bonus', 0),
+                        "luck": item.get('luck_bonus', 0),
+                        "crit": item.get('crit_bonus', 0),
+                        "magic": item.get('magic_bonus', 0)
+                    }
+                })
             
             context = {
                 "status": "active_player",
@@ -245,9 +451,13 @@ class OracleCog(DiscordRPGCog):
                 "race": char_data.get('race', 'Human'),
                 "alignment": char_data.get('alignment', 'neutral'),
                 "equipped_items": len(equipped),
+                "equipped_details": equipped_details,
                 "has_active_adventure": active_adventure is not None,
                 "total_damage": sum(item.get('damage', 0) for item in equipped),
-                "total_armor": sum(item.get('armor', 0) for item in equipped)
+                "total_armor": sum(item.get('armor', 0) for item in equipped),
+                "total_equipped_stats": total_equipped_stats,
+                "inventory": inventory_details,
+                "inventory_count": len(inventory_details)
             }
             
             return context
@@ -260,6 +470,18 @@ class OracleCog(DiscordRPGCog):
             return await self._generate_disabled_response(question, user_context)
         
         try:
+            # Check for selling requests first
+            if self._is_selling_request(question):
+                exclude_ids = self._extract_exclude_ids(question)
+                # Extract user_id from the context - it should be available from the calling ask command
+                user_id = getattr(user_context, 'user_id', None)
+                if not user_id and hasattr(user_context, 'get'):
+                    user_id = user_context.get('user_id')
+                if not user_id:
+                    # This should be passed from the ask command
+                    return "🔮 *The mystical energies are unclear...* I cannot determine thy identity for this transaction."
+                return await self._oracle_sell_items(user_id, exclude_ids)
+            
             # Check for CalmBot easter egg
             if self._is_calmbot_question(question):
                 return await self._generate_calmbot_roast(question, user_context)
@@ -282,8 +504,45 @@ IMPORTANT PERSONALITY GUIDELINES:
 - Provide specific command examples when helpful
 - Never break character or mention AI/technology
 
+INVENTORY ACCESS & ITEM ANALYSIS:
+- You can see the complete inventory and equipped items of the player asking questions
+- When comparing items for upgrades, analyze TOTAL STATS comprehensively:
+  * Main stats: damage, armor
+  * Bonus stats: health_bonus, speed_bonus, luck_bonus, crit_bonus, magic_bonus
+  * Calculate total stat points for meaningful comparisons
+  * Consider item type and slot compatibility
+  * Factor in the player's class, race, and playstyle
+- Give personalized equipment advice based on their actual items
+- Suggest specific upgrades, equipment changes, or strategies
+- Compare their items to help them make decisions using detailed stat analysis
+- Reference items by name and ID when giving advice
+- PRIVACY: Only discuss inventory details of the person asking - never mention other players' items
+
+ORACLE SELLING CAPABILITY:
+- The Oracle can DIRECTLY sell unequipped items for the player when requested
+- When asked to sell items, analyze inventory and sell non-upgrade unequipped items AUTOMATICALLY
+- Support "everything except" functionality - exclude specific item IDs if mentioned
+- Calculate total gold gained and report the transaction
+- Only sell unequipped items that are clearly not upgrades
+- CRITICAL: When asked to sell items, respond that you are performing the sale and then execute it
+- Format response like: "I shall dispose of these burdens for thee... *The Oracle channels mystical energies* ✨ Sold 3 items for 1,250 gold!"
+- Be dramatic and mystical about performing the sale
+- Always confirm what was sold and total gold gained
+
+ITEM COMPARISON FORMULA:
+When analyzing if an item is an upgrade, calculate:
+- Total combat value = damage + armor + health_bonus + speed_bonus + magic_bonus + (luck_bonus * 100) + (crit_bonus * 100)
+- Consider slot compatibility and whether it would replace currently equipped items
+- Factor in the player's class bonuses and preferred stats
+- Provide clear "Yes, upgrade" or "No, not an upgrade" answers with reasoning
+
 GAME CONTEXT:
 {json.dumps(self.game_knowledge, indent=2)}
+
+IMPORTANT COMMAND CORRECTIONS:
+- To remove an item from the market, use !withdraw <id> (NOT !unlist or !delist)
+- Multiple items can be sold with !sell <id1> <id2> <id3>
+- The Oracle can directly sell unequipped items when requested
 
 PLAYER ASKING:
 {json.dumps(user_context, indent=2)}
@@ -315,6 +574,66 @@ Respond to their question with wisdom and specific game knowledge."""
             'calmingstorm bot', 'calmingstorm\'s bot'
         ]
         return any(keyword in question_lower for keyword in calmbot_keywords)
+    
+    def _is_selling_request(self, question: str) -> bool:
+        """Check if the user is asking the Oracle to sell items"""
+        question_lower = question.lower()
+        
+        # First check if this is asking about market operations (not a sell request)
+        market_question_keywords = [
+            'from market', 'from the market', 'off market', 'off the market',
+            'marketplace', 'market place', 'listing', 'listed', 'unlist',
+            'delist', 'withdraw', 'cancel listing', 'how do i', 'how can i',
+            'what command', 'which command'
+        ]
+        if any(keyword in question_lower for keyword in market_question_keywords):
+            return False
+        
+        sell_keywords = [
+            'sell', 'dispose', 'get rid of', 'remove', 'delete',
+            'trash', 'merchant', 'vendor', 'convert to gold',
+            'turn into gold', 'monetize'
+        ]
+        # Context keywords that indicate they want items sold
+        context_keywords = [
+            'item', 'items', 'equipment', 'gear', 'inventory',
+            'everything', 'all', 'junk', 'stuff', 'unequipped',
+            'my', 'unused', 'extra', 'spare', 'duplicates'
+        ]
+        # Action keywords that indicate a request
+        action_keywords = [
+            'can you', 'could you', 'would you', 'please', 'help me',
+            'for me', 'automatically', 'bulk'
+        ]
+
+        has_sell = any(keyword in question_lower for keyword in sell_keywords)
+        has_context = any(keyword in question_lower for keyword in context_keywords)
+        has_action = any(keyword in question_lower for keyword in action_keywords)
+
+        # Trigger on: sell + context, OR sell + action
+        return has_sell and (has_context or has_action)
+    
+    def _extract_exclude_ids(self, question: str) -> list:
+        """Extract item IDs to exclude from selling"""
+        import re
+        
+        exclude_keywords = ['except', 'excluding', 'but not', 'keep', 'save', 'preserve', 'not']
+        question_lower = question.lower()
+        
+        # Look for exclude patterns
+        for keyword in exclude_keywords:
+            if keyword in question_lower:
+                # Find numbers after the exclude keyword
+                parts = question_lower.split(keyword)
+                if len(parts) > 1:
+                    # Extract numbers from the part after the exclude keyword
+                    numbers = re.findall(r'\b\d+\b', parts[-1])
+                    try:
+                        return [int(n) for n in numbers]
+                    except ValueError:
+                        pass
+        
+        return []
     
     async def _generate_calmbot_roast(self, question: str, user_context: Dict[str, Any]) -> str:
         """Generate a savage CalmBot roast using OpenAI while staying in Oracle character"""
@@ -362,6 +681,15 @@ Remember: Be creatively savage while staying completely in mystical character!""
     
     async def _generate_disabled_response(self, question: str, user_context: Dict[str, Any]) -> str:
         """Generate response when OpenAI integration is disabled"""
+        # Check for selling requests even when AI is disabled
+        if self._is_selling_request(question):
+            exclude_ids = self._extract_exclude_ids(question)
+            user_id = user_context.get('user_id')
+            if user_id:
+                return await self._oracle_sell_items(user_id, exclude_ids)
+            else:
+                return "🔮 *The mystical energies are unclear...* I cannot determine thy identity for this transaction."
+        
         # Check if this is due to configuration being disabled vs other issues
         from dotenv import load_dotenv
         load_dotenv()
@@ -380,6 +708,15 @@ Remember: Be creatively savage while staying completely in mystical character!""
     async def _generate_fallback_response(self, question: str, user_context: Dict[str, Any]) -> str:
         """Generate fallback response when AI has technical issues"""
         question_lower = question.lower()
+        
+        # Check for selling requests first
+        if self._is_selling_request(question):
+            exclude_ids = self._extract_exclude_ids(question)
+            user_id = user_context.get('user_id')
+            if user_id:
+                return await self._oracle_sell_items(user_id, exclude_ids)
+            else:
+                return "🔮 *The mystical energies are unclear...* I cannot determine thy identity for this transaction."
         
         # Simple keyword-based responses
         if any(word in question_lower for word in ['command', 'help', 'how']):
@@ -404,6 +741,18 @@ Remember: Be creatively savage while staying completely in mystical character!""
                    "The tools of power await! Use `!inventory` to see your treasures, `!equip <id>` to don equipment, "
                    "and `!equipment` to view your current gear. Seek better items through adventures and the marketplace.")
         
+        elif any(word in question_lower for word in ['sell', 'bulk', 'merchant']):
+            return ("🔮 *The spirit of commerce stirs...*\n\n"
+                   "Ah, you wish to trade your wares! Use `!sell <id>` to sell single items, or "
+                   "`!sell <id1> <id2> <id3>` to sell multiple items at once. The Oracle's full "
+                   "wisdom for bulk selling requires the mystical energies to be restored.")
+        
+        elif any(word in question_lower for word in ['withdraw', 'unlist', 'delist', 'remove from market', 'cancel listing']):
+            return ("🔮 *The ethereal marketplace ripples...*\n\n"
+                   "To reclaim thy treasures from the marketplace, use `!withdraw <id>` where the id "
+                   "is thy item's mystical identifier. This shall return the item to thy inventory "
+                   "without cost or penalty.")
+        
         else:
             return ("🔮 *The Oracle gazes into the swirling mists...*\n\n"
                    "The answer you seek is clouded today, brave adventurer. Try asking about specific topics "
@@ -415,6 +764,7 @@ Remember: Be creatively savage while staying completely in mystical character!""
         
         # Get user context
         user_context = self._get_user_context(ctx.author.id)
+        user_context['user_id'] = ctx.author.id  # Ensure user_id is available
         
         # Show typing indicator
         async with ctx.typing():

@@ -6,6 +6,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Tuple
 import logging
+import math
 
 import sys
 import os
@@ -13,6 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from bot import DiscordRPGCog, has_character
 from classes.items import ItemGenerator, ItemRarity
+from utils.scaling import calculate_xp_reward, calculate_gold_reward, get_level_bonus
 
 logger = logging.getLogger('DiscordRPG.EpicAdventures')
 
@@ -142,8 +144,16 @@ class EpicAdventuresCog(DiscordRPGCog):
             item.health_bonus, item.speed_bonus, item.luck_bonus,
             item.crit_bonus, item.magic_bonus, item.slot_type
         )
-    
-    
+
+    async def update_quest_progress(self, user_id: int, objective_type: str, amount: int = 1):
+        """Helper to update personal quest progress"""
+        try:
+            quest_cog = self.bot.get_cog('PersonalQuestsCog')
+            if quest_cog:
+                await quest_cog.check_and_update_progress(user_id, objective_type, amount)
+        except Exception as e:
+            logger.debug(f"Quest progress update failed: {e}")
+
     @commands.command(aliases=['epicstat', 'epicinfo'])
     @has_character()
     async def epicstatus(self, ctx: commands.Context):
@@ -215,7 +225,28 @@ class EpicAdventuresCog(DiscordRPGCog):
         # Progress bar
         filled = int(progress_percent // 10)
         progress_bar = "🟩" * filled + "⬜" * (10 - filled)
-        
+
+        # Calculate expected rewards using new scaling system
+        char_data = self.db.get_character(ctx.author.id)
+        # Both Epic and Legendary use mythic_2 tier, but with premium multipliers
+        # to ensure they always exceed regular adventures
+        tier = 'mythic_2'
+        premium_mult = 1.15 if active['adventure_type'] == 'epic' else 1.35
+        expected_xp = int(calculate_xp_reward(
+            player_level=char_data['level'],
+            difficulty=active['difficulty'],
+            tier=tier,
+            race_xp_bonus=1.0,
+            blessing_xp_mult=1.0
+        ) * premium_mult)
+        expected_gold = int(calculate_gold_reward(
+            player_level=char_data['level'],
+            difficulty=active['difficulty'],
+            tier=tier,
+            race_gold_bonus=1.0,
+            blessing_gold_mult=1.0
+        ) * premium_mult)
+
         embed = self.embed(
             f"{'🌟' if active['adventure_type'] == 'epic' else '⚡'} {active['adventure_type'].title()} Adventure in Progress",
             f"**{active['adventure_name']}**"
@@ -228,12 +259,17 @@ class EpicAdventuresCog(DiscordRPGCog):
         embed.add_field(
             name="📊 Progress",
             value=f"{progress_bar} {progress_percent:.1f}%",
-            inline=True
+            inline=False
         )
         embed.add_field(
             name="🎁 Expected Rewards",
-            value=f"**Base XP:** {active['base_xp_reward']:,}\n**Base Gold:** {active['base_gold_reward']:,}",
-            inline=False
+            value=f"**Base XP:** {expected_xp:,}\n**Base Gold:** {expected_gold:,}",
+            inline=True
+        )
+        embed.add_field(
+            name="🎯 Difficulty",
+            value=f"Level {active['difficulty']}",
+            inline=True
         )
         embed.color = discord.Color.purple() if active['adventure_type'] == 'epic' else discord.Color.gold()
         embed.set_footer(text=f"Returns at {finish_time.strftime('%Y-%m-%d %H:%M')}")
@@ -283,33 +319,73 @@ class EpicAdventuresCog(DiscordRPGCog):
                 luck_bonus = (char.luck - 1.0) * 0.1
                 success_rate = min(0.95, success_rate + luck_bonus)
                 
-                success = random.random() < success_rate
+                # Check for Divination Blessing (guaranteed adventure success)
+                blessing_used = False
+                religion_cog = self.bot.get_cog('ReligionCog')
+                if religion_cog:
+                    blessing_bonuses = religion_cog.get_active_blessings(char.user_id)
+                    if blessing_bonuses['adventure_success']:
+                        success = True  # Guarantee success
+                        blessing_used = True
+                        # Consume the blessing (one-time use)
+                        self.db.execute(
+                            "DELETE FROM divine_blessings WHERE user_id = ? AND effect = 'adventure_success'",
+                            (char.user_id,)
+                        )
+                        self.db.commit()
+                
+                if not blessing_used:
+                    success = random.random() < success_rate
                 
                 if success:
-                    # Calculate rewards with multipliers
+                    # Get race multipliers
                     from cogs.race import RaceCog
                     race_multipliers = RaceCog.get_race_multipliers(char.user_id)
-                    
+
                     # Get divine blessing bonuses
+                    blessing_xp_mult = 1.0
+                    blessing_gold_mult = 1.0
                     from cogs.religion import ReligionCog
                     religion_cog = self.bot.get_cog('ReligionCog')
                     if religion_cog:
                         blessing_bonuses = religion_cog.get_active_blessings(char.user_id)
-                        # Apply blessing multipliers
-                        race_multipliers['xp_gain'] *= blessing_bonuses['xp_mult']
-                        race_multipliers['gold_find'] *= blessing_bonuses['gold_mult']
-                    
-                    # Base rewards with variance
-                    xp_variance = random.uniform(0.8, 1.2)
-                    gold_variance = random.uniform(0.8, 1.2)
-                    
-                    final_xp = int(adventure['base_xp_reward'] * xp_variance * race_multipliers['xp_gain'])
-                    final_gold = int(adventure['base_gold_reward'] * gold_variance * race_multipliers['gold_find'])
+                        blessing_xp_mult = blessing_bonuses['xp_mult']
+                        blessing_gold_mult = blessing_bonuses['gold_mult']
+
+                    # Both Epic and Legendary use mythic_2 tier with premium multipliers
+                    # to ensure they always exceed regular adventures
+                    tier = 'mythic_2'
+                    premium_mult = 1.15 if adventure['adventure_type'] == 'epic' else 1.35
+
+                    # Calculate rewards using new scaling system
+                    # Use adventure difficulty as the difficulty parameter
+                    adventure_difficulty = adventure['difficulty']
+
+                    final_xp = calculate_xp_reward(
+                        player_level=char.level,
+                        difficulty=adventure_difficulty,
+                        tier=tier,
+                        race_xp_bonus=race_multipliers['xp_gain'],
+                        blessing_xp_mult=blessing_xp_mult
+                    )
+                    final_gold = calculate_gold_reward(
+                        player_level=char.level,
+                        difficulty=adventure_difficulty,
+                        tier=tier,
+                        race_gold_bonus=race_multipliers['gold_find'],
+                        blessing_gold_mult=blessing_gold_mult
+                    )
+
+                    # Apply premium multiplier and variance
+                    xp_variance = random.uniform(0.9, 1.1)
+                    gold_variance = random.uniform(0.9, 1.1)
+                    final_xp = int(final_xp * premium_mult * xp_variance)
+                    final_gold = int(final_gold * premium_mult * gold_variance)
                     
                     # Update character
                     new_xp = char.xp + final_xp
                     new_gold = char.money + final_gold
-                    new_level = min(50, 1 + int((new_xp / 100) ** 0.5))
+                    new_level = min(999, 1 + int((new_xp / 100) ** 0.5))
                     
                     # Update character stats
                     self.db.update_character(
@@ -337,10 +413,16 @@ class EpicAdventuresCog(DiscordRPGCog):
                         else:
                             item.name = f"Legendary {item.name}"
                             item.value = int(item.value * 2)
-                        
+
                         self.create_item_in_db(item)
                         items_found.append(item.name)
-                    
+
+                    # Update quest progress for epic adventure completion
+                    await self.update_quest_progress(char.user_id, 'epic_adventures', 1)
+                    await self.update_quest_progress(char.user_id, 'xp_gain', final_xp)
+                    await self.update_quest_progress(char.user_id, 'gold_earn', final_gold)
+                    await self.update_quest_progress(char.user_id, 'items_acquire', len(items_found))
+
                     # Success embed
                     embed = self.embed(
                         f"{'🌟' if adventure['adventure_type'] == 'epic' else '⚡'} {adventure['adventure_type'].title()} Adventure Complete!",
@@ -372,12 +454,13 @@ class EpicAdventuresCog(DiscordRPGCog):
                     embed.color = discord.Color.green()
                     
                 else:
-                    # Failed adventure - smaller rewards
+                    # Failed adventure - consolation rewards (20% of success)
                     from cogs.race import RaceCog
                     race_multipliers = RaceCog.get_race_multipliers(char.user_id)
-                    
-                    final_xp = int(adventure['base_xp_reward'] * 0.2 * race_multipliers['xp_gain'])
-                    final_gold = int(adventure['base_gold_reward'] * 0.1 * race_multipliers['gold_find'])
+
+                    # Small consolation XP based on level
+                    final_xp = int((100 + get_level_bonus(char.level, 50)) * race_multipliers['xp_gain'] * 0.2)
+                    final_gold = int((200 + get_level_bonus(char.level, 30)) * race_multipliers['gold_find'] * 0.1)
                     
                     self.db.update_character(
                         char.user_id,
@@ -513,7 +596,7 @@ class EpicAdventuresCog(DiscordRPGCog):
                             base_xp_reward, base_gold_reward, item_quality_min, item_quality_max, status)
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')""",
                         (char['user_id'], adventure_type, adventure_name, 
-                         3 if adventure_type == 'legendary' else 2,
+                         char['level'],  # Use character's actual level as difficulty
                          start_time, end_time,
                          adventure_data['base_xp'], adventure_data['base_gold'],
                          adventure_data['item_quality'][0], adventure_data['item_quality'][1])

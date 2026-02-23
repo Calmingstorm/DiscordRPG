@@ -5,6 +5,7 @@ import random
 import asyncio
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
+import math
 
 import sys
 import os
@@ -13,6 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from bot import DiscordRPGCog, has_character
 from classes.character import Character, CharacterClass, Race
 from classes.items import ItemGenerator, ItemType
+from utils.scaling import calculate_raid_xp, calculate_gold_reward, get_level_bonus
 
 class RaidBoss:
     """Raid boss with stats and mechanics"""
@@ -35,12 +37,21 @@ class RaidBoss:
 
 class RaidsCog(DiscordRPGCog):
     """Auto-raid system with periodic boss battles"""
-    
+
+    async def update_quest_progress(self, user_id: int, objective_type: str, amount: int = 1):
+        """Helper to update personal quest progress"""
+        try:
+            quest_cog = self.bot.get_cog('PersonalQuestsCog')
+            if quest_cog:
+                await quest_cog.check_and_update_progress(user_id, objective_type, amount)
+        except Exception as e:
+            pass  # Silently ignore quest tracking errors
+
     def __init__(self, bot):
         super().__init__(bot)
         self.active_raid = None
         self.raid_channel = None
-        
+
         # Define raid bosses
         self.raid_bosses = [
             RaidBoss("Ancient Dragon", 25, 15000, 800, 600, 25, 40, 750, 3500, "Dragon Breath"),
@@ -52,7 +63,28 @@ class RaidsCog(DiscordRPGCog):
             RaidBoss("Void Reaper", 40, 30000, 1200, 900, 35, 40, 1300, 6000, "Void Rend"),
             RaidBoss("Elder Wyrm", 32, 22000, 950, 750, 30, 40, 1000, 4500, "Ancient Roar"),
             RaidBoss("Chaos Beast", 26, 16000, 800, 550, 24, 36, 750, 3200, "Chaos Strike"),
-            RaidBoss("Undead Colossus", 38, 28000, 1100, 1000, 32, 40, 1200, 5500, "Bone Crush")
+            RaidBoss("Undead Colossus", 38, 28000, 1100, 1000, 32, 40, 1200, 5500, "Bone Crush"),
+            
+            # Epic Tier Bosses (Level 50-100)
+            RaidBoss("Cosmic Destroyer", 60, 50000, 1500, 1200, 50, 60, 2000, 10000, "Reality Tear"),
+            RaidBoss("Primordial Titan", 75, 75000, 2000, 1500, 60, 80, 2500, 15000, "World Shaker"),
+            RaidBoss("Eternal Phoenix", 90, 100000, 2500, 1800, 70, 90, 3000, 20000, "Rebirth Flame"),
+            RaidBoss("Void Emperor", 100, 150000, 3000, 2200, 80, 100, 4000, 30000, "Existence Void"),
+            
+            # Legendary Tier Bosses (Level 150-300)
+            RaidBoss("Dimensional Lord", 150, 300000, 4500, 3500, 120, 150, 6000, 50000, "Dimension Split"),
+            RaidBoss("Time Devourer", 200, 500000, 6000, 4500, 150, 200, 8000, 75000, "Temporal Collapse"),
+            RaidBoss("Reality Bender", 250, 750000, 7500, 6000, 180, 250, 10000, 100000, "Reality Storm"),
+            RaidBoss("Omniversal Tyrant", 300, 1000000, 10000, 8000, 220, 300, 15000, 150000, "Omni Destruction"),
+            
+            # Mythic Tier Bosses (Level 500-750)
+            RaidBoss("Infinity Breaker", 500, 2000000, 15000, 12000, 300, 400, 25000, 300000, "Infinite Rupture"),
+            RaidBoss("Eternal Nemesis", 600, 3000000, 20000, 15000, 350, 500, 35000, 500000, "Eternal Doom"),
+            RaidBoss("Source Corruptor", 750, 5000000, 30000, 20000, 450, 600, 50000, 750000, "Source Drain"),
+            
+            # Ultimate Tier Bosses (Level 999)
+            RaidBoss("The First Evil", 900, 10000000, 50000, 35000, 600, 800, 75000, 1000000, "Primal Chaos"),
+            RaidBoss("The Final God", 999, 20000000, 75000, 50000, 750, 999, 100000, 2000000, "Divine Judgment")
         ]
         
     async def cog_load(self):
@@ -113,7 +145,8 @@ class RaidsCog(DiscordRPGCog):
                 for guild in self.bot.guilds:
                     member = guild.get_member(user.id)
                     if member and member.status == discord.Status.online:
-                        online_players.append(char)
+                        # Convert sqlite3.Row to dict before appending
+                        online_players.append(self.db.row_to_dict(char))
                         break
                         
         return online_players
@@ -125,8 +158,39 @@ class RaidsCog(DiscordRPGCog):
             if not self.raid_channel:
                 return
                 
-        # Select random boss
-        boss = random.choice(self.raid_bosses)
+        # Select tier-appropriate boss based on player power
+        player_levels = [p.get('level', 1) for p in available_players]
+        avg_level = sum(player_levels) / len(player_levels)
+        max_level = max(player_levels)
+        
+        # Determine appropriate raid tier based on player composition
+        if avg_level < 25 and max_level < 40:
+            # Basic Tier (Level 15-40)
+            tier_bosses = [b for b in self.raid_bosses if 15 <= b.level <= 40]
+            tier = "Basic"
+        elif avg_level < 60 and max_level < 80:
+            # Epic Tier (Level 40-100) 
+            tier_bosses = [b for b in self.raid_bosses if 40 <= b.level <= 100]
+            tier = "Epic"
+        elif avg_level < 120 and max_level < 200:
+            # Legendary Tier (Level 80-300)
+            tier_bosses = [b for b in self.raid_bosses if 80 <= b.level <= 300]
+            tier = "Legendary"
+        elif avg_level < 400 and max_level < 600:
+            # Mythic Tier (Level 200-750)
+            tier_bosses = [b for b in self.raid_bosses if 200 <= b.level <= 750]
+            tier = "Mythic"
+        elif max_level >= 600:
+            # Ultimate Tier (Level 600-999)
+            tier_bosses = [b for b in self.raid_bosses if 600 <= b.level <= 999]
+            tier = "Ultimate"
+        else:
+            # Fallback to basic tier
+            tier_bosses = [b for b in self.raid_bosses if 15 <= b.level <= 40]
+            tier = "Basic"
+        
+        # Select random boss from appropriate tier
+        boss = random.choice(tier_bosses) if tier_bosses else self.raid_bosses[0]
         
         # Select raid participants (20-40 players)
         num_raiders = min(len(available_players), random.randint(boss.min_players, boss.max_players))
@@ -148,8 +212,23 @@ class RaidsCog(DiscordRPGCog):
         embed.add_field(name="👹 Boss Stats", 
                         value=f"**HP:** {boss.hp:,}\n**Attack:** {boss.attack}\n**Defense:** {boss.defense}", 
                         inline=True)
+        avg_raider_level = sum(r['level'] for r in raiders) // len(raiders)
+        level_diff = boss.level - avg_raider_level
+        
+        # Determine difficulty label
+        if level_diff <= 5:
+            difficulty = "🟢 Manageable"
+        elif level_diff <= 20:
+            difficulty = "🟡 Challenging"
+        elif level_diff <= 50:
+            difficulty = "🟠 Very Hard"
+        elif level_diff <= 100:
+            difficulty = "🔴 Extremely Hard"
+        else:
+            difficulty = "⚫ Nearly Impossible"
+        
         embed.add_field(name="⚔️ Raiders", 
-                        value=f"{len(raiders)} players\n**Avg Level:** {sum(r['level'] for r in raiders) // len(raiders)}", 
+                        value=f"{len(raiders)} players\n**Avg Level:** {avg_raider_level}\n**Difficulty:** {difficulty}", 
                         inline=True)
         embed.add_field(name="🎁 Rewards", 
                         value=f"**XP:** {boss.xp_reward} per player\n**Gold:** {boss.gold_reward} per player\n**Items:** Legendary loot!", 
@@ -210,15 +289,38 @@ class RaidsCog(DiscordRPGCog):
                 'stats': stats
             })
         
-        # Raid battle calculation
-        # Boss scales with number of raiders but raiders have advantage in numbers
-        boss_effective_power = boss.attack + boss.defense + (boss.hp / 10)
-        raid_success_chance = min(85, max(15, (total_raid_power / boss_effective_power) * 60))
+        # Improved raid battle calculation for tier-based system
+        avg_raider_level = sum(rs['data']['level'] for rs in raider_stats) / len(raider_stats)
         
-        # Add luck bonus to success chance
+        # Power-based success calculation (primary factor)
+        boss_effective_power = boss.attack + boss.defense + (boss.hp / 20)  # More forgiving HP factor
+        power_ratio = total_raid_power / boss_effective_power
+        base_success_chance = min(90, max(10, power_ratio * 70))  # 10-90% range
+        
+        # Level difference modifier (secondary factor, less harsh than before)
+        level_difference = boss.level - avg_raider_level
+        if level_difference > 20:  # Only penalize if significantly under-leveled
+            level_penalty = min(30, (level_difference - 20) * 1.5)  # Max 30% penalty
+        else:
+            level_penalty = 0
+        
+        # Apply tier bonus - properly tiered content should be more balanced
+        if abs(level_difference) <= 15:  # Well-matched content
+            tier_bonus = 10
+        elif abs(level_difference) <= 30:  # Reasonably matched
+            tier_bonus = 5
+        else:
+            tier_bonus = 0
+        
+        # Calculate final success chance
+        raid_success_chance = base_success_chance - level_penalty + tier_bonus
+        
+        # Add luck bonus
         avg_luck = sum(rs['stats']['luck'] for rs in raider_stats) / len(raider_stats)
-        luck_bonus = (avg_luck - 1.0) * 10
-        raid_success_chance += luck_bonus
+        luck_bonus = (avg_luck - 1.0) * 8  # More impactful luck
+        
+        # Final success chance (25-95% range)
+        raid_success_chance = min(95, max(25, raid_success_chance + luck_bonus))
         
         # Determine outcome
         success = random.randint(1, 100) <= raid_success_chance
@@ -283,30 +385,62 @@ class RaidsCog(DiscordRPGCog):
                 mvp_power = raider['power']
                 mvp_name = char_data['name']
             
-            # Base rewards
-            xp_reward = boss.xp_reward + random.randint(50, 150)
-            gold_reward = boss.gold_reward + random.randint(200, 800)
-            
-            # Bonus for higher level bosses
-            level_bonus = boss.level * 10
-            xp_reward += level_bonus
-            gold_reward += level_bonus
-            
-            # Apply raid multiplier for Raider classes
-            if raider['stats'].get('raid_mult', 1.0) > 1.0:
-                xp_reward = int(xp_reward * raider['stats']['raid_mult'])
-                gold_reward = int(gold_reward * raider['stats']['raid_mult'])
+            # Calculate rewards using new scaling system
+            player_level = char_data['level']
+            raid_class_mult = raider['stats'].get('raid_mult', 1.0)
+
+            # XP reward with raid scaling
+            xp_reward = calculate_raid_xp(
+                player_level=player_level,
+                boss_level=boss.level,
+                race_xp_bonus=1.0,  # Race bonus handled separately if needed
+                blessing_xp_mult=1.0,  # Could add blessing support
+                raid_class_mult=raid_class_mult
+            )
+
+            # Gold reward (determine tier for gold calculation)
+            if boss.level <= 40:
+                tier = 'basic'
+            elif boss.level <= 100:
+                tier = 'epic'
+            elif boss.level <= 300:
+                tier = 'legendary'
+            elif boss.level <= 750:
+                tier = 'mythic_1'
+            else:
+                tier = 'mythic_2'
+
+            gold_reward = calculate_gold_reward(
+                player_level=player_level,
+                difficulty=boss.level,
+                tier=tier,
+                race_gold_bonus=1.0,
+                blessing_gold_mult=1.0
+            )
+
+            # Apply raid class multiplier to gold as well
+            if raid_class_mult > 1.0:
+                gold_reward = int(gold_reward * raid_class_mult)
+
+            # Add random variance
+            xp_reward += random.randint(30, 100)
+            gold_reward += random.randint(100, 400)
             
             # Update character
             new_money = char_data['money'] + gold_reward
             new_xp = char_data['xp'] + xp_reward
             new_raid_stats = char_data['raidstats'] + 1
             
-            self.db.update_character(user_id, 
-                                   money=new_money, 
-                                   xp=new_xp, 
+            self.db.update_character(user_id,
+                                   money=new_money,
+                                   xp=new_xp,
                                    raidstats=new_raid_stats)
-            
+
+            # Track quest progress for XP and gold earned
+            await self.update_quest_progress(user_id, 'xp_gain', xp_reward)
+            await self.update_quest_progress(user_id, 'gold_earn', gold_reward)
+            await self.update_quest_progress(user_id, 'raids', 1)
+
             total_xp_given += xp_reward
             total_gold_given += gold_reward
             
@@ -321,17 +455,39 @@ class RaidsCog(DiscordRPGCog):
             # 30% chance for special loot per player
             if random.randint(1, 100) <= 30:
                 # Generate high-quality raid item
+                # Item stats based on boss tier and player level
+                # Boss tier determines base quality - higher bosses = better loot
+                if boss.level <= 30:
+                    base_min, base_max = 15, 30       # Basic tier
+                elif boss.level <= 75:
+                    base_min, base_max = 30, 50       # Epic tier
+                elif boss.level <= 150:
+                    base_min, base_max = 50, 75       # Legendary tier
+                elif boss.level <= 300:
+                    base_min, base_max = 75, 110      # Mythic tier
+                elif boss.level <= 500:
+                    base_min, base_max = 100, 140     # Divine tier
+                else:
+                    base_min, base_max = 130, 180     # Ultimate tier
+
+                # Scale with player level (meaningful scaling)
+                level_bonus = min(40, char_data['level'] // 5)  # +1 per 5 levels, capped at 40
+                min_stat = base_min + level_bonus
+                max_stat = base_max + level_bonus
+                
                 item = ItemGenerator.generate_item(
                     user_id,
-                    min_stat=max(8, boss.level - 5),
-                    max_stat=boss.level + 10,
+                    min_stat=min_stat,
+                    max_stat=max_stat,
                     item_type=random.choice(list(ItemType))
                 )
                 item.name = f"{boss.name}'s {item.name}"
                 
                 self.db.create_item(
                     user_id, item.name, item.type.value,
-                    item.value * 2, item.damage, item.armor, item.hand.value
+                    item.value * 2, item.damage, item.armor, item.hand.value,
+                    item.health_bonus, item.speed_bonus, item.luck_bonus,
+                    item.crit_bonus, item.magic_bonus, item.slot_type
                 )
                 items_awarded += 1
                 player_reward['item'] = item.name
@@ -423,16 +579,22 @@ class RaidsCog(DiscordRPGCog):
             char_data = raider['data']
             user_id = char_data['user_id']
             
-            # Consolation rewards (much smaller)
-            xp_reward = boss.xp_reward // 3 + random.randint(25, 75)
-            gold_reward = boss.gold_reward // 4 + random.randint(100, 300)
+            # Consolation rewards (small, based on participation)
+            player_level = char_data['level']
+            xp_reward = 50 + get_level_bonus(player_level, 30) + random.randint(20, 60)
+            gold_reward = 100 + get_level_bonus(player_level, 40) + random.randint(50, 150)
             
             # Update character (no raid stats increase on defeat)
             new_money = char_data['money'] + gold_reward
             new_xp = char_data['xp'] + xp_reward
-            
+
             self.db.update_character(user_id, money=new_money, xp=new_xp)
-            
+
+            # Track quest progress for consolation XP and gold
+            await self.update_quest_progress(user_id, 'xp_gain', xp_reward)
+            await self.update_quest_progress(user_id, 'gold_earn', gold_reward)
+            await self.update_quest_progress(user_id, 'raids', 1)
+
             total_xp_given += xp_reward
             total_gold_given += gold_reward
         

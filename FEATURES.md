@@ -1,120 +1,86 @@
-# DiscordRPG Features Overview
+# DiscordRPG Features
 
-## 🤖 AI-Powered Features (Unique!)
+## AI-Powered Features (Optional)
 
 ### Dynamic AI Events
-- **OpenAI-Generated Events**: Unique events every 15 minutes with custom stories
-- **Smart Item Names**: AI creates thematic item names matching event lore
-- **Event Types**: Treasure hunts, boss fights, world events, mystery encounters
-- **Fallback System**: Works without AI using handcrafted templates
+- OpenAI-generated events every 15 minutes with unique narratives
+- AI creates thematic item names that match event lore
+- Event types: treasure hunts, boss fights, world events, mystery encounters
+- Falls back to handcrafted templates without an OpenAI key
 
-### Living Game Manual (Oracle)
-- **Real-time Help**: AI answers questions about game mechanics
-- **Context-Aware**: Uses actual game data and character information
-- **Easter Eggs**: Special responses for fun interactions
-- **Always Available**: DM or server channel support
+### AI Oracle
+- Real-time help system that answers questions about game mechanics
+- Context-aware — uses actual game data and character information
+- Available in DMs or server channels
 
-## 🎮 Core Gameplay
+### Personal Quest Lines
+- AI-generated multi-chapter quest arcs unique to each player
+- Story choices affect outcomes and rewards
+
+## Core Gameplay
 
 ### Character Progression
-- **6-Tier Evolution**: Novice → Tier 1-5 → Immortal (42+ classes total)
+- **6-Tier Evolution**: Novice → Tier 1-5 → Immortal (42+ classes)
 - **7 Class Paths**: Warrior, Thief, Mage, Ranger, Raider, Ritualist, Paragon
-- **10 Unique Races**: Human, Elf, Dwarf, Orc, Halfling, Gnome, Dragonborn, Tiefling, Undead, Demon
-- **Convergent Endgame**: All paths lead to Eternal → Immortal
+- **10 Playable Races**: Human, Elf, Dwarf, Orc, Halfling, Gnome, Dragonborn, Tiefling, Undead, Demon
+- Convergent endgame — all paths lead to Eternal → Immortal
 
 ### Equipment System
-- **16+ Weapon Types**: Swords, Axes, Bows, Staves, Daggers, and more
-- **5 Armor Slots**: Helmet, Chestplate, Leggings, Gauntlets, Boots  
-- **8 Stat Types**: Damage, Armor, Health, Speed, Luck, Crit, Magic, special bonuses
-- **Quality Tiers**: 1-50 stat points, multiple rarity levels
+- 16+ weapon types: swords, axes, bows, staves, daggers, and more
+- 7 equipment slots: weapon + 5 armor + accessory
+- 8 stat categories: damage, armor, health, speed, luck, crit, magic, special
+- Quality tiers with 1-50 stat points and multiple rarity levels
 
-## 🎯 Automation Systems
+## Automated Game Loops
 
-### Multiple Game Loops
-- **Adventures**: Every 7-21 minutes (level-scaled, 5min-2hr duration)
-- **Battles**: Every 2-8 minutes (1v1, 3v3, 5v5, 10v10 formats)
-- **Epic Adventures**: Every 45 minutes (4-8hr, level 10+)
-- **Legendary Adventures**: Epic pool (8-24hr, level 15+) 
-- **Raids**: Every 35 minutes (group boss fights)
-- **AI Events**: Every 15 minutes (unique AI-generated content)
+All loops run automatically while players are online — no commands needed.
 
-### Smart Participation
-- **Online Detection**: Only online (green) players participate
-- **Level Scaling**: Content appropriate for player level
-- **Parallel Systems**: Multiple activities can run simultaneously
-- **Balance Protection**: Rate limiting and cooldowns
+| System | Frequency | Duration | Unlock |
+|--------|-----------|----------|--------|
+| Adventures | 7-21 min | 5 min - 2 hr | Level 1 |
+| Battles | 2-8 min | Instant (1v1 to 10v10) | Level 1 |
+| Epic Adventures | 45 min | 4-8 hr | Level 10 |
+| Legendary Adventures | Epic pool | 8-24 hr | Level 15 |
+| Raids | 35 min | Group boss fights | Level 5 |
+| AI Events | 15 min | Varies | Level 1 |
 
-## 🏛️ Advanced Systems
+- Only online (green status) players participate
+- Content scales to player level
+- Multiple activities run in parallel
 
-### Religion & Blessings
+## Religion and Blessings
+
 - **5 Gods**: Luminara (light), Nyxara (darkness), Terranos (earth), Aquanis (water), Pyrion (fire)
-- **Prayer System**: Daily prayers for favor and blessings
-- **Active Blessings**: Temporary XP/gold multipliers
-- **Divine Favor**: Long-term progression system
+- Daily prayers build divine favor over time
+- Active blessings grant temporary XP/gold multipliers
+- Sacrifice items for favor with your chosen deity
 
-### Economy
-- **Global Market**: Buy/sell between players with pagination
+## Economy
+
+- **Global Marketplace**: Buy and sell items between players
 - **Direct Trading**: Player-to-player item exchanges
 - **Daily Shops**: NPC merchants with rotating stock
-- **Gold Sinks**: Various upgrade and service costs
+- **Gold Sinks**: Class evolution, equipment upgrades, gambling
 
-### Social Features
-- **Marriages**: Player partnerships with bonuses
+## Social
+
+- **Marriages**: Player partnerships with gameplay bonuses
 - **Guilds**: Group membership and coordination
-- **PvP Tournaments**: Organized competitive events
-- **Leaderboards**: Multiple ranking categories
+- **PvP Combat**: Direct duels with stat-based outcomes
+- **Leaderboards**: Rankings by level, gold, items, and more
 
-## 🎰 Entertainment
+## Entertainment
 
-### Gambling Systems
-- **Coin Flip**: Simple 50/50 betting
-- **Dice Games**: Various dice-based games
-- **Lottery**: Server-wide lottery system
-- **Luck Scaling**: Character luck affects outcomes
+- **Gambling**: Coin flip, dice games, luck-scaled outcomes
+- **Daily Rewards**: Login bonuses with streak multipliers
+- **Crate System**: Loot boxes with tiered rewards
+- **Statistics**: Detailed performance tracking
 
-### Daily Activities
-- **Daily Rewards**: Login bonuses and streaks
-- **Achievement System**: Progress tracking and rewards
-- **Statistics**: Detailed player performance metrics
+## Technical
 
-## 🔧 Technical Features
-
-### Database Design
-- **SQLite**: Reliable, file-based storage
-- **Automatic Backups**: Hourly and daily backup rotation
-- **Migration System**: Safe database updates
-- **Performance**: Optimized queries and indexing
-
-### Bot Architecture
-- **Cog System**: Modular feature organization
-- **Error Handling**: Graceful failure recovery
-- **Logging**: Comprehensive activity tracking
-- **Configuration**: Environment-based settings
-
-### User Experience
-- **Pagination**: Navigate long lists with buttons
-- **Embeds**: Rich, formatted Discord messages
-- **Channel Detection**: Auto-finds appropriate channels
-- **Help System**: Comprehensive command documentation
-
-## 🌟 What Makes This Special
-
-1. **AI Integration**: First Discord RPG with dynamic AI event generation
-2. **Depth**: Complex progression without overwhelming new players
-3. **Automation**: True idle gameplay - progress while away
-4. **Balance**: Carefully tuned systems prevent exploitation
-5. **Scalability**: Handles small servers to large communities
-6. **Customization**: Many configuration options
-7. **Reliability**: Robust error handling and fallbacks
-8. **Community**: Social features encourage interaction
-
-## 📊 Perfect For
-
-- **Gaming Communities**: Add RPG elements to your server
-- **Programming Education**: Learn Discord.py and AI integration
-- **Community Engagement**: Keep members active and entertained
-- **Bot Development**: Example of complex Discord bot architecture
-
----
-
-*Ready to transform your Discord server into an AI-powered RPG world?*
+- **MariaDB/MySQL Backend**: Proper indexing, foreign keys, transactional integrity
+- **Automated Backups**: Hourly + daily database dumps via mysqldump
+- **Modular Architecture**: Each system is an independent cog — easy to extend or disable
+- **Web Leaderboard**: PHP dashboard included in `web/` directory
+- **Environment-Based Config**: All settings in `.env`, no hardcoded values
+- **Graceful Degradation**: AI features fall back to templates, reconnects on DB errors

@@ -1,6 +1,7 @@
-# Environment variables
+# Environment and secrets
 .env
 .env.local
+.env.production
 
 # Database files
 *.db
@@ -9,12 +10,9 @@
 
 # Log files
 *.log
-bot.log
 
-# Backup files
+# Backups
 backups/
-*.backup
-*.bak
 
 # Python cache
 __pycache__/
@@ -24,26 +22,25 @@ __pycache__/
 .Python
 env/
 venv/
-ENV/
-env.bak/
-venv.bak/
+.venv/
 
-# IDE files
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
-# User-specific files
-user_removal_log.txt
-*.private
+# Claude
+.claude/
 
-# Temporary files
+# Temporary
 temp/
 tmp/
 *.tmp
+*.bak
+*.backup

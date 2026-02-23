@@ -61,8 +61,25 @@ class CharacterClass(Enum):
     CHAMPION = "Champion"
     HERO = "Hero"
     LEGEND = "Legend"
-    ETERNAL = "Eternal"
-    IMMORTAL = "Immortal"
+    
+    # Specialized Ascendant Classes (Tier 6)
+    WARLORD_SUPREME = "Warlord Supreme"      # From Berserker
+    SHADOWLORD = "Shadowlord"               # From Nightblade
+    ARCHSORCERER = "Archsorcerer"           # From Archmage
+    GRANDMASTER_ARCHER = "Grandmaster Archer" # From Marksman
+    KHAN = "Khan"                           # From Warchief
+    DIVINE_ORACLE = "Divine Oracle"         # From Prophet
+    
+    # Apex Classes (Tier 7) - Level 50+
+    GOD_EMPEROR = "God Emperor"             # From Warlord Supreme
+    VOID_WALKER = "Void Walker"             # From Shadowlord
+    REALITY_WEAVER = "Reality Weaver"       # From Archsorcerer
+    TIME_HUNTER = "Time Hunter"             # From Grandmaster Archer
+    WORLDBREAKER = "Worldbreaker"           # From Khan
+    COSMIC_SAGE = "Cosmic Sage"             # From Divine Oracle
+    
+    # Transcendent Classes (Tier 8) - Level 100+
+    UNIVERSAL_SOVEREIGN = "Universal Sovereign" # From any Apex class
 
 class Race(Enum):
     """Available races with their bonuses"""
@@ -132,17 +149,31 @@ class ClassEvolution:
         CharacterClass.SAGE: [CharacterClass.PROPHET],  # Alternative path
         CharacterClass.HERO: [CharacterClass.LEGEND],
         
-        # Tier 5 (Level 25)
-        CharacterClass.BERSERKER: [CharacterClass.ETERNAL],
-        CharacterClass.NIGHTBLADE: [CharacterClass.ETERNAL],
-        CharacterClass.ARCHMAGE: [CharacterClass.ETERNAL],
-        CharacterClass.MARKSMAN: [CharacterClass.ETERNAL],
-        CharacterClass.WARCHIEF: [CharacterClass.ETERNAL],
-        CharacterClass.PROPHET: [CharacterClass.ETERNAL],
-        CharacterClass.LEGEND: [CharacterClass.ETERNAL],
+        # Tier 5 (Level 25) - Direct evolution to specialized Ascendant classes
+        CharacterClass.BERSERKER: [CharacterClass.WARLORD_SUPREME],
+        CharacterClass.NIGHTBLADE: [CharacterClass.SHADOWLORD],
+        CharacterClass.ARCHMAGE: [CharacterClass.ARCHSORCERER],
+        CharacterClass.MARKSMAN: [CharacterClass.GRANDMASTER_ARCHER],
+        CharacterClass.WARCHIEF: [CharacterClass.KHAN],
+        CharacterClass.PROPHET: [CharacterClass.DIVINE_ORACLE],
+        CharacterClass.LEGEND: [CharacterClass.DIVINE_ORACLE],  # Paragon path joins Divine Oracle
         
-        # Tier 6 (Level 30)
-        CharacterClass.ETERNAL: [CharacterClass.IMMORTAL],
+        # Tier 6 (Level 30) - Ascendant classes evolve to Apex classes
+        CharacterClass.WARLORD_SUPREME: [CharacterClass.GOD_EMPEROR],
+        CharacterClass.SHADOWLORD: [CharacterClass.VOID_WALKER],
+        CharacterClass.ARCHSORCERER: [CharacterClass.REALITY_WEAVER],
+        CharacterClass.GRANDMASTER_ARCHER: [CharacterClass.TIME_HUNTER],
+        CharacterClass.KHAN: [CharacterClass.WORLDBREAKER],
+        CharacterClass.DIVINE_ORACLE: [CharacterClass.COSMIC_SAGE],
+        
+        # Tier 7 (Level 50) - Apex classes evolve to Universal Sovereign (Level 100)
+        CharacterClass.GOD_EMPEROR: [CharacterClass.UNIVERSAL_SOVEREIGN],
+        CharacterClass.VOID_WALKER: [CharacterClass.UNIVERSAL_SOVEREIGN],
+        CharacterClass.REALITY_WEAVER: [CharacterClass.UNIVERSAL_SOVEREIGN],
+        CharacterClass.TIME_HUNTER: [CharacterClass.UNIVERSAL_SOVEREIGN],
+        CharacterClass.WORLDBREAKER: [CharacterClass.UNIVERSAL_SOVEREIGN],
+        CharacterClass.COSMIC_SAGE: [CharacterClass.UNIVERSAL_SOVEREIGN],
+        # All Apex classes can evolve to Universal Sovereign at level 100
     }
     
     @staticmethod
@@ -176,10 +207,14 @@ class ClassStats:
             "favor_mult": 1.0
         }
         
-        # Evolution tier (0-6)
+        # Evolution tier (0-8)
         tier = 0
-        if level >= 30:
-            tier = 6
+        if level >= 100:
+            tier = 8  # Universal Sovereign
+        elif level >= 50:
+            tier = 7  # Apex Classes
+        elif level >= 30:
+            tier = 6  # Ascendant Classes
         elif level >= 25:
             tier = 5
         elif level >= 20:
@@ -247,16 +282,93 @@ class ClassStats:
                 bonuses["luck_mult"] += 0.2
                 
         # Paragon line - All-rounder premium class
-        elif char_class.value.endswith(("Paragon", "Champion", "Hero", "Legend", "Eternal", "Immortal")):
+        elif char_class.value.endswith(("Paragon", "Champion", "Hero", "Legend")):
             bonuses["attack_mult"] += 0.1 * tier
             bonuses["defense_mult"] += 0.1 * tier
             bonuses["magic_mult"] += 0.05 * tier
             bonuses["speed_mult"] += 0.05 * tier
             bonuses["luck_mult"] += 0.02 * tier
             bonuses["raid_mult"] += 0.05 * tier
-            if "Immortal" in char_class.value:
-                bonuses["lifesteal"] = 0.1
-                bonuses["dodge_chance"] += 0.1
+                
+        # Specialized Ascendant Classes - Tier 6+
+        elif char_class == CharacterClass.WARLORD_SUPREME:
+            bonuses["attack_mult"] += 0.5   # Massive attack bonus
+            bonuses["defense_mult"] += 0.3
+            bonuses["crit_chance"] += 0.15
+            bonuses["lifesteal"] = 0.15
+            
+        elif char_class == CharacterClass.SHADOWLORD:
+            bonuses["speed_mult"] += 0.4    # Speed and stealth focus
+            bonuses["dodge_chance"] += 0.25
+            bonuses["steal_chance"] += 0.3
+            bonuses["crit_chance"] += 0.2
+            
+        elif char_class == CharacterClass.ARCHSORCERER:
+            bonuses["magic_mult"] += 0.6    # Magic mastery
+            bonuses["luck_mult"] += 0.3
+            bonuses["favor_mult"] += 0.4
+            
+        elif char_class == CharacterClass.GRANDMASTER_ARCHER:
+            bonuses["speed_mult"] += 0.3    # Precision and range
+            bonuses["crit_chance"] += 0.3
+            bonuses["dodge_chance"] += 0.2
+            
+        elif char_class == CharacterClass.KHAN:
+            bonuses["raid_mult"] += 0.5     # Leadership bonuses
+            bonuses["attack_mult"] += 0.3
+            bonuses["defense_mult"] += 0.3
+            
+        elif char_class == CharacterClass.DIVINE_ORACLE:
+            bonuses["favor_mult"] += 0.8    # Divine connection
+            bonuses["luck_mult"] += 0.4
+            bonuses["magic_mult"] += 0.2
+            
+        # Apex Classes - Tier 7
+        elif char_class == CharacterClass.GOD_EMPEROR:
+            bonuses["attack_mult"] += 0.8
+            bonuses["defense_mult"] += 0.6
+            bonuses["raid_mult"] += 0.8
+            bonuses["crit_chance"] += 0.25
+            bonuses["lifesteal"] = 0.2
+            
+        elif char_class == CharacterClass.VOID_WALKER:
+            bonuses["speed_mult"] += 0.7
+            bonuses["dodge_chance"] += 0.4
+            bonuses["steal_chance"] += 0.5
+            bonuses["magic_mult"] += 0.3
+            
+        elif char_class == CharacterClass.REALITY_WEAVER:
+            bonuses["magic_mult"] += 1.0
+            bonuses["luck_mult"] += 0.6
+            bonuses["favor_mult"] += 0.7
+            
+        elif char_class == CharacterClass.TIME_HUNTER:
+            bonuses["speed_mult"] += 0.8
+            bonuses["crit_chance"] += 0.5
+            bonuses["dodge_chance"] += 0.3
+            
+        elif char_class == CharacterClass.WORLDBREAKER:
+            bonuses["attack_mult"] += 0.7
+            bonuses["raid_mult"] += 1.0
+            bonuses["defense_mult"] += 0.5
+            
+        elif char_class == CharacterClass.COSMIC_SAGE:
+            bonuses["favor_mult"] += 1.2
+            bonuses["luck_mult"] += 0.8
+            bonuses["magic_mult"] += 0.5
+            
+        # Transcendent Class - Tier 8
+        elif char_class == CharacterClass.UNIVERSAL_SOVEREIGN:
+            bonuses["attack_mult"] += 1.0
+            bonuses["defense_mult"] += 1.0
+            bonuses["magic_mult"] += 1.0
+            bonuses["speed_mult"] += 1.0
+            bonuses["luck_mult"] += 1.0
+            bonuses["raid_mult"] += 1.5
+            bonuses["favor_mult"] += 1.5
+            bonuses["crit_chance"] += 0.3
+            bonuses["dodge_chance"] += 0.3
+            bonuses["lifesteal"] = 0.25
                 
         return bonuses
 

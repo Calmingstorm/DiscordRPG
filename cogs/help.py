@@ -46,7 +46,7 @@ class HelpCog(DiscordRPGCog):
             "`!profile [@user]` - View character stats",
             "`!classes` - View class evolution tree", 
             "`!classbonuses [class]` - Show class benefits",
-            "`!evolve` - Evolve class (lvl 5,10,15,20,25,30)",
+            "`!evolve` - Evolve your class",
             "`!races` - View available races",
             "`!race <name>` - Select race (permanent!)",
             "`!align <good/neutral/evil>` - Set alignment",
@@ -77,7 +77,8 @@ class HelpCog(DiscordRPGCog):
         economy_commands = [
             "`!market` - Browse marketplace",
             "`!buy <id>` - Purchase item",
-            "`!offer <id> <price>` - List item for sale", 
+            "`!offer <id> <price>` - List item for sale",
+            "`!withdraw <id>` - Remove item from market", 
             "`!daily` - Daily login rewards"
         ]
         embed.add_field(
@@ -120,6 +121,7 @@ class HelpCog(DiscordRPGCog):
             "`!battles` - Battle system guide",
             "`!battlestatus` - Check battle system",
             "`!tournament <prize>` - Host tournament",
+            "`!smite @user` - Divine smiting (20k gold)",
             "`!online` - See online players"
         ]
         embed.add_field(
@@ -130,7 +132,6 @@ class HelpCog(DiscordRPGCog):
         
         # Adventures
         adventure_commands = [
-            "`!adventure` - Adventure system info",
             "`!epicstatus` - Check epic/legendary status",
             "`!epicadventures` - Epic system info"
         ]
@@ -139,7 +140,19 @@ class HelpCog(DiscordRPGCog):
             value="\n".join(adventure_commands),
             inline=True
         )
-        
+
+        # Personal Quests
+        quest_commands = [
+            "`!quest` - View active quest progress",
+            "`!questhistory` - View completed quests",
+            "`!abandonquest` - Abandon current quest"
+        ]
+        embed.add_field(
+            name="📜 **Personal Quests**",
+            value="\n".join(quest_commands),
+            inline=True
+        )
+
         # Raids & Events
         raid_commands = [
             "`!raids` - Raid system info",
@@ -154,7 +167,7 @@ class HelpCog(DiscordRPGCog):
         # System & Info
         system_commands = [
             "`!autoplay status` - Check auto-game",
-            "`!status` - Check adventure status", 
+            "`!status` - Check adventure status",
             "`!help <command>` - Command details",
             "`!ask <question>` - Living Game Manual",
             "`!ping` - Check bot latency"

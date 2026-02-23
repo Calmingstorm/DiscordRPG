@@ -30,6 +30,10 @@ class CharacterCog(DiscordRPGCog):
         if not name:
             await ctx.send("What shall your character's name be? (3-20 characters)")
             
+            # Mark user as in interactive command
+            if hasattr(self.bot, 'interactive_users'):
+                self.bot.interactive_users.add(ctx.author.id)
+            
             def check(m):
                 return m.author == ctx.author and m.channel == ctx.channel
                 
@@ -39,6 +43,10 @@ class CharacterCog(DiscordRPGCog):
             except asyncio.TimeoutError:
                 await ctx.send("❌ Character creation timed out.")
                 return
+            finally:
+                # Remove user from interactive set
+                if hasattr(self.bot, 'interactive_users'):
+                    self.bot.interactive_users.discard(ctx.author.id)
                 
         # Validate name
         if not (3 <= len(name) <= 20):
@@ -230,11 +238,15 @@ class CharacterCog(DiscordRPGCog):
             
             if active_blessings:
                 blessing_text = []
-                for blessing in active_blessings[:3]:  # Show max 3 blessings
-                    time_left = datetime.fromisoformat(blessing['expires_at']) - datetime.now()
-                    minutes_left = max(0, int(time_left.total_seconds() // 60))
-                    blessing_text.append(f"✨ {blessing['blessing_name']} ({minutes_left}m)")
-                
+                for blessing in active_blessings:  # Show all blessings
+                    # Check if this is a charge-based blessing (like Divination)
+                    if blessing['effect'] == 'adventure_success':
+                        blessing_text.append(f"✨ {blessing['blessing_name']}")
+                    else:
+                        time_left = datetime.fromisoformat(blessing['expires_at']) - datetime.now()
+                        minutes_left = max(0, int(time_left.total_seconds() // 60))
+                        blessing_text.append(f"✨ {blessing['blessing_name']} ({minutes_left}m)")
+
                 embed.add_field(
                     name="🙏 Divine Blessings",
                     value="\n".join(blessing_text) if blessing_text else "None active",
@@ -284,10 +296,11 @@ class CharacterCog(DiscordRPGCog):
         tier_2_classes = ["Swordsman", "Knight", "Rogue", "Assassin", "Wizard", "Warlock", "Hunter", "Tracker", "Viking", "Chieftain", "Mystic", "Shaman", "Champion"]
         # Tier 3 classes (Level 15 -> 20 for evolution)
         tier_3_classes = ["Warlord", "Paladin", "Bandit", "Shadow", "Sorcerer", "Necromancer", "Bowmaster", "Beastmaster", "Ravager", "Conqueror", "Oracle", "Sage", "Hero"]
-        # Tier 4 classes (Level 20 -> 25 for evolution)
+        # Tier 4 classes (Level 20 -> 25 for evolution to Ascendant)
         tier_4_classes = ["Berserker", "Nightblade", "Archmage", "Marksman", "Warchief", "Prophet", "Legend"]
-        # Tier 5 classes (Level 25 -> 30 for evolution)
-        tier_5_classes = ["Eternal"]
+        # Tier 6+ classes - Special level requirements
+        tier_6_ascendant = ["Warlord Supreme", "Shadowlord", "Archsorcerer", "Grandmaster Archer", "Khan", "Divine Oracle"]  # Level 50 for Apex
+        tier_7_apex = ["God Emperor", "Void Walker", "Reality Weaver", "Time Hunter", "Worldbreaker", "Cosmic Sage"]  # Level 100 for Universal
         
         if char.char_class.value in tier_1_classes:
             min_level_needed = 10
@@ -296,9 +309,11 @@ class CharacterCog(DiscordRPGCog):
         elif char.char_class.value in tier_3_classes:
             min_level_needed = 20
         elif char.char_class.value in tier_4_classes:
-            min_level_needed = 25
-        elif char.char_class.value in tier_5_classes:
-            min_level_needed = 30
+            min_level_needed = 25  # Tier 4 -> Ascendant classes require level 25
+        elif char.char_class.value in tier_6_ascendant:
+            min_level_needed = 50   # Ascendant -> Apex classes require level 50  
+        elif char.char_class.value in tier_7_apex:
+            min_level_needed = 100  # Apex -> Universal Sovereign requires level 100
         
         if char.level < min_level_needed:
             await ctx.send(f"❌ You need to be level {min_level_needed} or higher to evolve from **{char.char_class.value}**!")
@@ -319,16 +334,17 @@ class CharacterCog(DiscordRPGCog):
             await ctx.send("❌ No evolution options available.")
             return
             
-        # Show options with warning for convergence
+        # Show evolution options
         description = "Choose your class evolution:\n\n" + "\n".join([f"`{i+1}` - **{opt.value}**" for i, opt in enumerate(options)])
         
-        # Add warning if evolving to Eternal (convergence point)
-        if any(opt == CharacterClass.ETERNAL for opt in options):
-            description += "\n\n⚠️ **Warning**: Evolving to Eternal means leaving behind your traditional class path. All paths converge to Eternal, leading ultimately to Immortal."
         
         embed = self.embed("🌟 Class Evolution", description)
         embed.set_footer(text="Type the number of your choice within 30 seconds")
         await ctx.send(embed=embed)
+        
+        # Mark user as in interactive command
+        if hasattr(self.bot, 'interactive_users'):
+            self.bot.interactive_users.add(ctx.author.id)
         
         # Wait for choice
         def check(m):
@@ -342,6 +358,10 @@ class CharacterCog(DiscordRPGCog):
         except asyncio.TimeoutError:
             await ctx.send("❌ Evolution timed out.")
             return
+        finally:
+            # Remove user from interactive set
+            if hasattr(self.bot, 'interactive_users'):
+                self.bot.interactive_users.discard(ctx.author.id)
             
         # Store old class for message
         old_class_name = char.char_class.value
@@ -360,7 +380,7 @@ class CharacterCog(DiscordRPGCog):
         )
         await ctx.send(embed=embed)
         logger.info(f"Evolution message sent for user {ctx.author.id}")
-        
+    
     @commands.command()
     @has_character()
     async def changerace(self, ctx: commands.Context):
@@ -381,6 +401,10 @@ class CharacterCog(DiscordRPGCog):
         embed.set_footer(text=f"This will cost 1 reset point (you have {char_data['reset_points']})")
         await ctx.send(embed=embed)
         
+        # Mark user as in interactive command
+        if hasattr(self.bot, 'interactive_users'):
+            self.bot.interactive_users.add(ctx.author.id)
+        
         # Wait for choice
         def check(m):
             return (m.author == ctx.author and m.channel == ctx.channel and 
@@ -393,6 +417,10 @@ class CharacterCog(DiscordRPGCog):
         except asyncio.TimeoutError:
             await ctx.send("❌ Race change timed out.")
             return
+        finally:
+            # Remove user from interactive set
+            if hasattr(self.bot, 'interactive_users'):
+                self.bot.interactive_users.discard(ctx.author.id)
             
         # Confirm
         if not await ctx.confirm(f"Change your race to **{new_race.value}**? This will cost 1 reset point."):
@@ -596,13 +624,13 @@ class CharacterCog(DiscordRPGCog):
         
         embed.add_field(
             name="🏆 **Higher Tiers**",
-            value="**Tier 3** *(Level 15)*: Warlord, Paladin, Bandit, Shadow...\n**Tier 4** *(Level 20)*: Berserker, Nightblade, Archmage...\n**Tier 5** *(Level 25)*: Eternal *(All paths converge)*\n**Tier 6** *(Level 30)*: Immortal *(Final evolution)*",
+            value="**Tier 3** *(Level 15)*: Warlord, Paladin, Bandit, Shadow...\n**Tier 4** *(Level 20)*: Berserker, Nightblade, Archmage...\n**Tier 5** *(Level 25)*: Specialized Ascendant classes\n**Tier 6** *(Level 30)*: Elite Ascendant classes\n**Tier 7** *(Level 50)*: Apex classes\n**Tier 8** *(Level 100)*: Universal Sovereign",
             inline=False
         )
         
         embed.add_field(
             name="📈 **How to Evolve**",
-            value="• Use `!evolve` at levels **5, 10, 15, 20, 25, 30**\n• Choose from available paths for your class\n• Each class provides different stat bonuses\n• Evolution is permanent!",
+            value="• Use `!evolve` at levels **5, 10, 15, 20, 25, 30, 50, 100**\n• Choose from available paths for your class\n• Each class maintains its unique identity to Universal Sovereign\n• Evolution is permanent - no convergence issues!",
             inline=False
         )
         
@@ -651,6 +679,34 @@ class CharacterCog(DiscordRPGCog):
             description=f"Your profile color has been set to #{color.upper()}",
             color=discord.Color(color_int)
         )
+        await ctx.send(embed=embed)
+        
+    @commands.command()
+    @has_character()
+    async def sellconfirm(self, ctx: commands.Context):
+        """Toggle sell confirmation on/off"""
+        char_data = self.db.get_character(ctx.author.id)
+        current_setting = char_data.get('sell_confirmation', True)
+        
+        # Toggle the setting
+        new_setting = not current_setting
+        self.db.update_character(ctx.author.id, sell_confirmation=new_setting)
+        
+        status = "enabled" if new_setting else "disabled"
+        embed = self.embed(
+            f"⚙️ Sell Confirmation {status.title()}",
+            f"Sell confirmation is now **{status}**.\n\n"
+            f"{'You will be asked to confirm before selling items.' if new_setting else 'Items will be sold immediately without confirmation.'}"
+        )
+        
+        if not new_setting:
+            embed.add_field(
+                name="⚠️ Warning",
+                value="Be careful! Items will now sell immediately when using `!sell`.",
+                inline=False
+            )
+        
+        embed.color = discord.Color.green() if new_setting else discord.Color.orange()
         await ctx.send(embed=embed)
         
     @commands.command()

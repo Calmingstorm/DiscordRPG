@@ -8,6 +8,7 @@ import os
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any
 import logging
+import math
 
 import sys
 import os
@@ -15,6 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from bot import DiscordRPGCog, has_character
 from classes.items import ItemGenerator, ItemType, ItemRarity
+from utils.scaling import calculate_event_xp, get_level_bonus
 
 # Import OpenAI safely
 try:
@@ -27,7 +29,16 @@ logger = logging.getLogger('DiscordRPG.AIEvents')
 
 class AIEventsCog(DiscordRPGCog):
     """Dynamic AI-generated events with rewards and boss fights - runs parallel to existing systems"""
-    
+
+    async def update_quest_progress(self, user_id: int, objective_type: str, amount: int = 1):
+        """Helper to update personal quest progress"""
+        try:
+            quest_cog = self.bot.get_cog('PersonalQuestsCog')
+            if quest_cog:
+                await quest_cog.check_and_update_progress(user_id, objective_type, amount)
+        except Exception as e:
+            pass  # Silently ignore quest tracking errors
+
     def __init__(self, bot):
         super().__init__(bot)
         self.openai_client = None
@@ -243,12 +254,12 @@ Requirements:
         name_lower = name.lower()
         item_type_lower = item_type.lower()
         
-        # Define keywords that should match item types
+        # Define keywords that should match ONLY specific item types
         type_keywords = {
             'sword': ['blade', 'sword', 'edge', 'saber', 'cutlass'],
             'axe': ['axe', 'hatchet', 'cleaver', 'chopper'],
             'hammer': ['hammer', 'maul', 'mallet', 'crusher'],
-            'bow': ['bow', 'longbow', 'shortbow', 'recurve'],
+            'bow': ['bow', 'longbow', 'shortbow', 'recurve', 'archer'],
             'staff': ['staff', 'rod', 'scepter', 'cane'],
             'shield': ['shield', 'buckler', 'aegis', 'guard'],
             'dagger': ['dagger', 'knife', 'stiletto', 'dirk'],
@@ -267,11 +278,53 @@ Requirements:
             'boots': ['boots', 'shoes', 'sabatons', 'footguards', 'treads', 'sandals']
         }
         
-        # Check if the name contains appropriate keywords for the item type
+        # Check if the name contains appropriate keywords for the EXACT item type
         keywords = type_keywords.get(item_type_lower, [item_type_lower])
-        for keyword in keywords:
-            if keyword in name_lower:
-                return True
+        name_matches = any(keyword in name_lower for keyword in keywords)
+        
+        if name_matches:
+            return True
+            
+        # Check for conflicting weapon type names - don't allow "sword" names for bows, etc.
+        # Weapons should not have armor names and vice versa
+        all_weapon_keywords = ['sword', 'blade', 'axe', 'hammer', 'mace', 'dagger', 'spear', 
+                               'bow', 'staff', 'wand', 'crossbow', 'greatsword', 'halberd', 
+                               'katana', 'scythe', 'shield']
+        
+        all_armor_keywords = ['helmet', 'crown', 'circlet', 'helm', 'coif', 'hat', 'cap',
+                             'chestplate', 'breastplate', 'cuirass', 'vest', 'mail', 'armor', 'tunic', 'robe',
+                             'leggings', 'greaves', 'pants', 'chausses', 'legguards', 'trousers',
+                             'gauntlets', 'gloves', 'mittens', 'handguards', 'bracers', 'hands',
+                             'boots', 'shoes', 'sabatons', 'footguards', 'treads', 'sandals']
+        
+        weapon_conflicts = {
+            'bow': ['sword', 'blade', 'axe', 'hammer', 'mace', 'dagger', 'spear'],
+            'sword': ['bow', 'axe', 'hammer', 'mace', 'staff', 'spear'],
+            'axe': ['sword', 'blade', 'bow', 'hammer', 'mace', 'staff', 'spear'],
+            'hammer': ['sword', 'blade', 'bow', 'axe', 'mace', 'staff', 'spear'],
+            'staff': ['sword', 'blade', 'bow', 'axe', 'hammer', 'mace', 'spear'],
+            'mace': ['sword', 'blade', 'bow', 'axe', 'hammer', 'staff', 'spear'],
+            'spear': ['sword', 'blade', 'bow', 'axe', 'hammer', 'mace', 'staff'],
+            'dagger': ['bow', 'axe', 'hammer', 'mace', 'staff', 'spear'],
+            'crossbow': ['sword', 'blade', 'axe', 'hammer', 'mace', 'dagger', 'spear'],
+            'greatsword': ['bow', 'axe', 'hammer', 'mace', 'staff', 'spear'],
+            'halberd': ['sword', 'blade', 'bow', 'axe', 'hammer', 'mace'],
+            'katana': ['bow', 'axe', 'hammer', 'mace', 'staff', 'spear'],
+            'scythe': ['sword', 'blade', 'bow', 'axe', 'hammer', 'mace'],
+            'wand': ['sword', 'blade', 'bow', 'axe', 'hammer', 'mace', 'spear'],
+            'shield': ['sword', 'blade', 'bow', 'axe', 'hammer', 'mace', 'spear', 'staff'],
+            # Armor pieces should not have weapon names
+            'helmet': all_weapon_keywords,
+            'chestplate': all_weapon_keywords,
+            'leggings': all_weapon_keywords,
+            'gauntlets': all_weapon_keywords,
+            'boots': all_weapon_keywords
+        }
+        
+        conflicts = weapon_conflicts.get(item_type_lower, [])
+        for conflict in conflicts:
+            if conflict in name_lower:
+                return False
         
         # Don't allow obviously wrong combinations (like potions for armor)
         wrong_keywords = ['potion', 'elixir', 'brew', 'tonic', 'draught', 'flask', 'bottle']
@@ -279,30 +332,39 @@ Requirements:
             if wrong in name_lower and item_type_lower not in ['wand', 'staff']:  # These can be magical
                 return False
         
-        # If no specific match found, allow it (better to have a slightly off name than generic)
-        return True
+        # Additional check: weapons shouldn't have armor names
+        is_weapon = item_type_lower in ['sword', 'axe', 'hammer', 'bow', 'spear', 'wand', 'dagger', 
+                                        'knife', 'staff', 'mace', 'crossbow', 'greatsword', 'halberd', 
+                                        'katana', 'scythe']
+        if is_weapon:
+            for armor_keyword in all_armor_keywords:
+                if armor_keyword in name_lower:
+                    return False
+        
+        # If no specific match found, don't allow it - names should be appropriate for item type
+        return False
 
     def _get_fallback_event(self, event_type: str, participants: List[Dict]) -> Dict:
         """Fallback event templates when AI is unavailable"""
         fallback_events = {
             'treasure': [
-                {"title": "🏺 Ancient Ruins Discovered", "description": "Crumbling ruins have emerged from the mists, containing forgotten treasures waiting to be claimed!", "special": "", "rewards_flavor": "ancient relics", "item_names": ["Ruined Blade", "Ancient Circlet", "Forgotten Shield", "Dusty Grimoire", "Stone Gauntlets"]},
-                {"title": "💰 Merchant Caravan Attack", "description": "Bandits have attacked a merchant caravan! Brave adventurers can claim the scattered treasure.", "special": "", "rewards_flavor": "merchant goods", "item_names": ["Trader's Blade", "Silk Cloak", "Merchant's Staff", "Caravan Shield", "Golden Dagger"]},
-                {"title": "🌟 Fallen Star Fragment", "description": "A star has fallen from the heavens, leaving behind magical crystals and celestial treasures!", "special": "", "rewards_flavor": "celestial artifacts", "item_names": ["Starfall Sword", "Cosmic Shield", "Celestial Robes", "Meteor Hammer", "Stardust Wand"]}
+                {"title": "🏺 Ancient Ruins Discovered", "description": "Crumbling ruins have emerged from the mists, containing forgotten treasures waiting to be claimed!", "special": "", "rewards_flavor": "ancient relics", "item_names": ["Ruined Blade", "Ancient Circlet", "Forgotten Shield", "Dusty Grimoire", "Stone Gear"]},
+                {"title": "💰 Merchant Caravan Attack", "description": "Bandits have attacked a merchant caravan! Brave adventurers can claim the scattered treasure.", "special": "", "rewards_flavor": "merchant goods", "item_names": ["Trader's Blade", "Silk Armor", "Merchant's Staff", "Caravan Shield", "Golden Dagger"]},
+                {"title": "🌟 Fallen Star Fragment", "description": "A star has fallen from the heavens, leaving behind magical crystals and celestial treasures!", "special": "", "rewards_flavor": "celestial artifacts", "item_names": ["Starfall Sword", "Cosmic Shield", "Celestial Armor", "Meteor Hammer", "Stardust Wand"]}
             ],
             'mini_boss': [
-                {"title": "⚔️ The Iron Golem Awakens", "description": "An ancient iron golem has stirred to life, challenging any who dare approach its domain!", "special": "'INTRUDERS WILL BE CRUSHED!' - Iron Golem", "rewards_flavor": "metallic treasures", "item_names": ["Iron-Forged Blade", "Golem's Gauntlets", "Molten Core Shield", "Construct Hammer", "Steel-Heart Armor"]},
-                {"title": "🐉 Wyrmling's Fury", "description": "A young dragon demands tribute from passing adventurers. Will you pay... or fight?", "special": "'Your gold or your life, mortals!' - Young Dragon", "rewards_flavor": "draconic hoard", "item_names": ["Wyrmling Claw", "Dragonscale Vest", "Flame-Touched Sword", "Dragon's Tooth Dagger", "Scale-Mail Boots"]},
-                {"title": "👻 Spectral Guardian", "description": "The ghost of a fallen knight blocks the path, seeking worthy opponents to test their mettle.", "special": "'Face me, if you dare!' - Spectral Knight", "rewards_flavor": "spectral weapons", "item_names": ["Ghostly Blade", "Phantom Armor", "Soul-Touched Shield", "Ethereal Helm", "Wraith Cloak"]}
+                {"title": "⚔️ The Iron Golem Awakens", "description": "An ancient iron golem has stirred to life, challenging any who dare approach its domain!", "special": "'INTRUDERS WILL BE CRUSHED!' - Iron Golem", "rewards_flavor": "metallic treasures", "item_names": ["Iron-Forged Blade", "Golem's Gear", "Molten Core Shield", "Construct Hammer", "Steel-Heart Armor"]},
+                {"title": "🐉 Wyrmling's Fury", "description": "A young dragon demands tribute from passing adventurers. Will you pay... or fight?", "special": "'Your gold or your life, mortals!' - Young Dragon", "rewards_flavor": "draconic hoard", "item_names": ["Wyrmling Claw", "Dragonscale Armor", "Flame-Touched Sword", "Dragon's Tooth Dagger", "Scale-Mail Gear"]},
+                {"title": "👻 Spectral Guardian", "description": "The ghost of a fallen knight blocks the path, seeking worthy opponents to test their mettle.", "special": "'Face me, if you dare!' - Spectral Knight", "rewards_flavor": "spectral weapons", "item_names": ["Ghostly Blade", "Phantom Armor", "Soul-Touched Shield", "Ethereal Gear", "Wraith Equipment"]}
             ],
             'world_event': [
-                {"title": "🌪️ Chaos Storms Brewing", "description": "Dark magic swirls across the realm, threatening all in its path! Unite to dispel the growing darkness.", "special": "", "rewards_flavor": "storm-touched items", "item_names": ["Stormcaller Staff", "Thunder Cloak", "Lightning Blade", "Wind-Walker Boots", "Storm Crown"]},
-                {"title": "👑 The King's Call", "description": "The royal herald announces a grand tournament! All skilled adventurers are called to prove their worth.", "special": "", "rewards_flavor": "royal rewards", "item_names": ["Royal Blade", "Crown Guard Shield", "Noble's Cloak", "Ceremonial Mace", "Regent's Gauntlets"]},
-                {"title": "🔮 Magical Convergence", "description": "The ley lines are surging with power! Magical energies offer great rewards to those brave enough to harness them.", "special": "", "rewards_flavor": "enchanted items", "item_names": ["Ley-Line Staff", "Mana-Woven Robes", "Arcane Focus", "Mystic Circlet", "Power Crystal Blade"]}
+                {"title": "🌪️ Chaos Storms Brewing", "description": "Dark magic swirls across the realm, threatening all in its path! Unite to dispel the growing darkness.", "special": "", "rewards_flavor": "storm-touched items", "item_names": ["Stormcaller Staff", "Thunder Armor", "Lightning Blade", "Wind-Walker Gear", "Storm Crown"]},
+                {"title": "👑 The King's Call", "description": "The royal herald announces a grand tournament! All skilled adventurers are called to prove their worth.", "special": "", "rewards_flavor": "royal rewards", "item_names": ["Royal Blade", "Crown Guard Shield", "Noble's Armor", "Ceremonial Mace", "Regent's Gear"]},
+                {"title": "🔮 Magical Convergence", "description": "The ley lines are surging with power! Magical energies offer great rewards to those brave enough to harness them.", "special": "", "rewards_flavor": "enchanted items", "item_names": ["Ley-Line Staff", "Mana-Woven Armor", "Arcane Focus", "Mystic Circlet", "Power Crystal Blade"]}
             ],
             'mystery': [
-                {"title": "❓ The Wandering Portal", "description": "A mysterious portal has appeared, leading to unknown realms. What lies beyond?", "special": "", "rewards_flavor": "otherworldly items", "item_names": ["Voidwalker Blade", "Dimensional Cloak", "Portal-Touched Staff", "Planar Shield", "Reality Ripper"]},
-                {"title": "🎭 The Enigmatic Stranger", "description": "A hooded figure offers cryptic challenges and mysterious rewards to worthy adventurers.", "special": "", "rewards_flavor": "mysterious gifts", "item_names": ["Stranger's Gift", "Enigma Blade", "Riddle-Wrapped Cloak", "Mystery Box Shield", "Cryptic Wand"]},
+                {"title": "❓ The Wandering Portal", "description": "A mysterious portal has appeared, leading to unknown realms. What lies beyond?", "special": "", "rewards_flavor": "otherworldly items", "item_names": ["Voidwalker Blade", "Dimensional Armor", "Portal-Touched Staff", "Planar Shield", "Reality Ripper"]},
+                {"title": "🎭 The Enigmatic Stranger", "description": "A hooded figure offers cryptic challenges and mysterious rewards to worthy adventurers.", "special": "", "rewards_flavor": "mysterious gifts", "item_names": ["Stranger's Gift", "Enigma Blade", "Riddle-Wrapped Armor", "Mystery Box Shield", "Cryptic Wand"]},
                 {"title": "📜 Ancient Prophecy", "description": "An old prophecy stirs, foretelling great rewards for those who can decipher its meaning.", "special": "", "rewards_flavor": "prophetic items", "item_names": ["Prophet's Blade", "Seer's Circlet", "Oracle Staff", "Vision Shield", "Fate-Bound Armor"]}
             ]
         }
@@ -330,25 +392,34 @@ Requirements:
             # Generate rewards based on level
             level = winner['level']
             
-            # Base XP and gold
-            base_xp = random.randint(50 * level, 100 * level)
-            base_gold = random.randint(100 * level, 300 * level)
+            # Base XP and gold with intelligent diminishing returns
             
             # Get race multipliers
             from cogs.race import RaceCog
             race_multipliers = RaceCog.get_race_multipliers(winner['user_id'])
-            
+
             # Get divine blessing bonuses
+            blessing_xp_mult = 1.0
+            blessing_gold_mult = 1.0
             from cogs.religion import ReligionCog
             religion_cog = self.bot.get_cog('ReligionCog')
             if religion_cog:
                 blessing_bonuses = religion_cog.get_active_blessings(winner['user_id'])
-                race_multipliers['xp_gain'] *= blessing_bonuses['xp_mult']
-                race_multipliers['gold_find'] *= blessing_bonuses['gold_mult']
-            
-            # Apply multipliers
-            final_xp = int(base_xp * race_multipliers['xp_gain'])
-            final_gold = int(base_gold * race_multipliers['gold_find'])
+                blessing_xp_mult = blessing_bonuses['xp_mult']
+                blessing_gold_mult = blessing_bonuses['gold_mult']
+
+            # Calculate rewards using new scaling system (solo event, winner)
+            final_xp = calculate_event_xp(
+                player_level=level,
+                event_type='solo',
+                is_winner=True,
+                race_xp_bonus=race_multipliers['xp_gain'],
+                blessing_xp_mult=blessing_xp_mult
+            )
+
+            # Gold with similar scaling
+            base_gold = 150 + get_level_bonus(level, 80) + random.randint(50, 150)
+            final_gold = int(base_gold * race_multipliers['gold_find'] * blessing_gold_mult)
             
             # Chance for item (30% chance - same as regular battles)
             item_found = None
@@ -358,6 +429,8 @@ Requirements:
                     # Exceptional items - comparable to low-tier epic adventure rewards
                     min_quality = max(8, level + 3)   # Higher quality
                     max_quality = min(25, level + 12) # Cap at reasonable level, max 25 stats
+                    # Ensure min doesn't exceed max
+                    min_quality = min(min_quality, max_quality)
                     item_found = ItemGenerator.generate_random_equipment(
                         winner['user_id'], min_quality, max_quality
                     )
@@ -365,6 +438,8 @@ Requirements:
                     # Regular quality - same as autoplay battles
                     min_quality = max(4, level + 1)  # Minimum 4 stats, level-appropriate
                     max_quality = level + 6          # Same range as adventure rewards
+                    # Ensure min doesn't exceed max
+                    min_quality = min(min_quality, max_quality)
                     item_found = ItemGenerator.generate_random_equipment(
                         winner['user_id'], min_quality, max_quality
                     )
@@ -388,7 +463,7 @@ Requirements:
             char_data = self.db.get_character(winner['user_id'])
             new_xp = char_data['xp'] + final_xp
             new_gold = char_data['money'] + final_gold
-            new_level = min(50, 1 + int((new_xp / 100) ** 0.5))
+            new_level = min(999, 1 + int((new_xp / 100) ** 0.5))
             
             self.db.update_character(
                 winner['user_id'],
@@ -396,7 +471,11 @@ Requirements:
                 money=new_gold,
                 level=new_level
             )
-            
+
+            # Track quest progress for XP and gold
+            await self.update_quest_progress(winner['user_id'], 'xp_gain', final_xp)
+            await self.update_quest_progress(winner['user_id'], 'gold_earn', final_gold)
+
             rewards.append({
                 'user_id': winner['user_id'],
                 'name': winner['name'],
@@ -405,7 +484,7 @@ Requirements:
                 'item': item_found.name if item_found else None,
                 'leveled_up': new_level > char_data['level']
             })
-        
+
         return {
             'type': 'treasure',
             'event_data': event_data,
@@ -435,8 +514,9 @@ Requirements:
             
             equipment_power = 0
             for item in equipped_items:
-                equipment_power += (item.get('damage', 0) + item.get('armor', 0) + 
-                                  item.get('health_bonus', 0) + item.get('magic_bonus', 0))
+                item_dict = self.db.row_to_dict(item)
+                equipment_power += (item_dict.get('damage', 0) + item_dict.get('armor', 0) + 
+                                  item_dict.get('health_bonus', 0) + item_dict.get('magic_bonus', 0))
             
             participant_power = base_power + equipment_power
             group_power += participant_power
@@ -448,30 +528,42 @@ Requirements:
         # Distribute rewards
         rewards = []
         for participant in participants:
-            if success:
-                # Victory rewards (higher)
-                base_xp = random.randint(100 * participant['level'], 200 * participant['level'])
-                base_gold = random.randint(200 * participant['level'], 500 * participant['level'])
-                item_chance = 0.6  # 60% chance for item
-            else:
-                # Defeat rewards (consolation)
-                base_xp = random.randint(30 * participant['level'], 60 * participant['level'])
-                base_gold = random.randint(50 * participant['level'], 150 * participant['level'])
-                item_chance = 0.2  # 20% chance for item
-            
-            # Apply multipliers (same as treasure event)
+            level = participant['level']
+
+            # Get race multipliers
             from cogs.race import RaceCog
             race_multipliers = RaceCog.get_race_multipliers(participant['user_id'])
-            
+
+            # Get divine blessing bonuses
+            blessing_xp_mult = 1.0
+            blessing_gold_mult = 1.0
             from cogs.religion import ReligionCog
             religion_cog = self.bot.get_cog('ReligionCog')
             if religion_cog:
                 blessing_bonuses = religion_cog.get_active_blessings(participant['user_id'])
-                race_multipliers['xp_gain'] *= blessing_bonuses['xp_mult']
-                race_multipliers['gold_find'] *= blessing_bonuses['gold_mult']
-            
-            final_xp = int(base_xp * race_multipliers['xp_gain'])
-            final_gold = int(base_gold * race_multipliers['gold_find'])
+                blessing_xp_mult = blessing_bonuses['xp_mult']
+                blessing_gold_mult = blessing_bonuses['gold_mult']
+
+            if success:
+                item_chance = 0.6  # 60% chance for item on victory
+            else:
+                item_chance = 0.2  # 20% chance for item on defeat
+
+            # Calculate rewards using new scaling system (group event)
+            final_xp = calculate_event_xp(
+                player_level=level,
+                event_type='group',
+                is_winner=success,
+                race_xp_bonus=race_multipliers['xp_gain'],
+                blessing_xp_mult=blessing_xp_mult
+            )
+
+            # Gold with similar scaling
+            if success:
+                base_gold = 200 + get_level_bonus(level, 100) + random.randint(100, 300)
+            else:
+                base_gold = 80 + get_level_bonus(level, 40) + random.randint(30, 100)
+            final_gold = int(base_gold * race_multipliers['gold_find'] * blessing_gold_mult)
             
             # Generate item if won
             item_found = None
@@ -481,6 +573,8 @@ Requirements:
                     # Legendary boss items - comparable to mid-tier epic adventures
                     min_quality = max(10, participant['level'] + 4)  # Higher quality
                     max_quality = min(30, participant['level'] + 15) # Cap at 30 stats
+                    # Ensure min doesn't exceed max
+                    min_quality = min(min_quality, max_quality)
                     item_found = ItemGenerator.generate_random_equipment(
                         participant['user_id'], min_quality, max_quality
                     )
@@ -488,6 +582,8 @@ Requirements:
                     # Victory items - slightly better than regular battles
                     min_quality = max(4, participant['level'] + 2)  # Same as battle winners
                     max_quality = participant['level'] + 8           # Same as battle winners
+                    # Ensure min doesn't exceed max
+                    min_quality = min(min_quality, max_quality)
                     item_found = ItemGenerator.generate_random_equipment(
                         participant['user_id'], min_quality, max_quality
                     )
@@ -495,6 +591,8 @@ Requirements:
                     # Defeat items - lower quality
                     min_quality = max(3, participant['level'])       # Same as battle losers
                     max_quality = participant['level'] + 4           # Same as battle losers
+                    # Ensure min doesn't exceed max
+                    min_quality = min(min_quality, max_quality)
                     item_found = ItemGenerator.generate_random_equipment(
                         participant['user_id'], min_quality, max_quality
                     )
@@ -518,7 +616,7 @@ Requirements:
             char_data = self.db.get_character(participant['user_id'])
             new_xp = char_data['xp'] + final_xp
             new_gold = char_data['money'] + final_gold
-            new_level = min(50, 1 + int((new_xp / 100) ** 0.5))
+            new_level = min(999, 1 + int((new_xp / 100) ** 0.5))
             
             self.db.update_character(
                 participant['user_id'],
@@ -526,7 +624,11 @@ Requirements:
                 money=new_gold,
                 level=new_level
             )
-            
+
+            # Track quest progress for XP and gold
+            await self.update_quest_progress(participant['user_id'], 'xp_gain', final_xp)
+            await self.update_quest_progress(participant['user_id'], 'gold_earn', final_gold)
+
             rewards.append({
                 'user_id': participant['user_id'],
                 'name': participant['name'],
@@ -535,7 +637,7 @@ Requirements:
                 'item': item_found.name if item_found else None,
                 'leveled_up': new_level > char_data['level']
             })
-        
+
         return {
             'type': 'mini_boss',
             'event_data': event_data,
@@ -708,8 +810,32 @@ Requirements:
                 logger.info("Not enough players online for AI event")
                 return
             
-            # Select event type (weighted)
-            event_types = ['treasure'] * 4 + ['mini_boss'] * 3 + ['world_event'] * 2 + ['mystery'] * 1
+            # Determine event tier based on online player levels
+            avg_level = sum(p['level'] for p in online_players) / len(online_players)
+            max_level = max(p['level'] for p in online_players)
+            
+            # Select appropriate tier and event type
+            if avg_level < 15:
+                # Minor tier events
+                event_types = ['treasure'] * 5 + ['mini_boss'] * 2 + ['mystery'] * 3
+                tier = "Minor"
+            elif avg_level < 40:
+                # Major tier events  
+                event_types = ['treasure'] * 3 + ['mini_boss'] * 4 + ['world_event'] * 2 + ['mystery'] * 1
+                tier = "Major"
+            elif avg_level < 80:
+                # Epic tier events
+                event_types = ['treasure'] * 2 + ['mini_boss'] * 4 + ['world_event'] * 3 + ['mystery'] * 1
+                tier = "Epic" 
+            elif avg_level < 200:
+                # Legendary tier events
+                event_types = ['treasure'] * 1 + ['mini_boss'] * 3 + ['world_event'] * 5 + ['mystery'] * 1
+                tier = "Legendary"
+            else:
+                # Ultimate tier events
+                event_types = ['mini_boss'] * 2 + ['world_event'] * 7 + ['mystery'] * 1
+                tier = "Ultimate"
+                
             event_type = random.choice(event_types)
             
             # Limit participants based on event type

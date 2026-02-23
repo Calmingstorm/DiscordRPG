@@ -10,10 +10,20 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from bot import DiscordRPGCog, has_character
 from classes.items import CrateSystem
+from utils.scaling import calculate_daily_xp, get_level_bonus
 
 class DailyCog(DiscordRPGCog):
     """Daily rewards and bonuses"""
-    
+
+    async def update_quest_progress(self, user_id: int, objective_type: str, amount: int = 1):
+        """Helper to update personal quest progress"""
+        try:
+            quest_cog = self.bot.get_cog('PersonalQuestsCog')
+            if quest_cog:
+                await quest_cog.check_and_update_progress(user_id, objective_type, amount)
+        except Exception as e:
+            pass  # Silently ignore quest tracking errors
+
     @commands.command()
     @has_character()
     @commands.cooldown(1, 86400, commands.BucketType.user)  # Once per day
@@ -36,15 +46,19 @@ class DailyCog(DiscordRPGCog):
         
         # Cap streak at 10 days for max rewards
         display_streak = min(new_streak, 10)
-        
-        # Base reward increases with streak
-        base_gold = 100 + (display_streak * 50)  # 100-600 gold
-        base_xp = 50 + (display_streak * 25)     # 50-300 XP
-        
-        # Random multiplier (0.8x to 1.2x)
-        multiplier = random.uniform(0.8, 1.2)
-        gold_reward = int(base_gold * multiplier)
-        xp_reward = int(base_xp * multiplier)
+        player_level = char_data['level']
+
+        # Calculate XP using new scaling system
+        xp_reward = calculate_daily_xp(
+            player_level=player_level,
+            streak=display_streak,
+            race_xp_bonus=1.0,
+            blessing_xp_mult=1.0
+        )
+
+        # Gold reward with streak and level bonus
+        base_gold = 400 + (display_streak * 150) + get_level_bonus(player_level, 80)
+        gold_reward = int(base_gold * random.uniform(0.9, 1.1))
         
         # Double-check and update atomically to prevent race condition
         try:
@@ -63,11 +77,15 @@ class DailyCog(DiscordRPGCog):
                 return
                 
             self.db.commit()
-            
+
+            # Track quest progress for XP and gold
+            await self.update_quest_progress(ctx.author.id, 'xp_gain', xp_reward)
+            await self.update_quest_progress(ctx.author.id, 'gold_earn', gold_reward)
+
         except Exception as e:
             await ctx.send("❌ An error occurred while processing your daily reward. Please try again.")
             return
-        
+
         embed = self.embed(
             "🌅 Daily Reward Claimed!",
             f"Day **{display_streak}** of your streak!"
@@ -105,7 +123,7 @@ class DailyCog(DiscordRPGCog):
             
         # Perfect week bonus (day 7)
         if display_streak == 7:
-            bonus_gold = 1000
+            bonus_gold = 5000
             self.db.update_character(ctx.author.id, money=char_data['money'] + gold_reward + bonus_gold)
             bonuses.append(f"💎 Week Bonus: +{bonus_gold:,} gold")
             
@@ -192,11 +210,12 @@ class DailyCog(DiscordRPGCog):
         # Show upcoming rewards
         display_streak = min(current_streak + 1, 10)
         next_rewards = []
-        
-        base_gold = 100 + (display_streak * 50)
-        base_xp = 50 + (display_streak * 25)
-        next_rewards.append(f"💰 {base_gold:,} gold")
-        next_rewards.append(f"⭐ {base_xp} XP")
+
+        # Use new scaling for preview
+        preview_xp = calculate_daily_xp(char_data['level'], display_streak, 1.0, 1.0)
+        preview_gold = 400 + (display_streak * 150) + get_level_bonus(char_data['level'], 80)
+        next_rewards.append(f"💰 ~{preview_gold:,}+ gold")
+        next_rewards.append(f"⭐ ~{preview_xp}+ XP")
         
         # Check for bonus rewards
         if display_streak >= 3 and display_streak % 3 == 0:
@@ -211,7 +230,7 @@ class DailyCog(DiscordRPGCog):
             next_rewards.append("🍀 +0.1 Luck")
             
         if display_streak == 7:
-            next_rewards.append("💎 Week Bonus: +1,000 gold")
+            next_rewards.append("💎 Week Bonus: +5,000 gold")
             
         if display_streak == 10:
             next_rewards.append("✨ Magic Crate")

@@ -3,12 +3,15 @@ import discord
 from discord.ext import commands
 from typing import Optional
 import math
+import logging
 
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from bot import DiscordRPGCog, has_character
+
+logger = logging.getLogger('DiscordRPG.Inventory')
 
 class PaginationView(discord.ui.View):
     """Pagination view for inventory and market"""
@@ -74,7 +77,16 @@ from classes.items import ItemGenerator, ItemType, ItemRarity, CrateSystem
 
 class InventoryCog(DiscordRPGCog):
     """Inventory, equipment, and item commands"""
-    
+
+    async def update_quest_progress(self, user_id: int, objective_type: str, amount: int = 1):
+        """Helper to update personal quest progress"""
+        try:
+            quest_cog = self.bot.get_cog('PersonalQuestsCog')
+            if quest_cog:
+                await quest_cog.check_and_update_progress(user_id, objective_type, amount)
+        except Exception as e:
+            logger.debug(f"Quest progress update failed: {e}")
+
     async def get_inventory_embed(self, user_id: int, page: int = 1):
         """Generate inventory embed for given page"""
         items = self.db.get_user_items(user_id)
@@ -296,7 +308,7 @@ class InventoryCog(DiscordRPGCog):
         # Simple equipment logic
         hand = item['hand']
         item_type = item['type']
-        slot_type = item.get('slot_type') or 'weapon'
+        slot_type = item.get('slot_type', 'weapon')
         
         # Define weapon types that conflict with each other
         weapon_types = ['Sword', 'Axe', 'Hammer', 'Mace', 'Dagger', 'Knife', 'Spear', 'Wand', 'Staff', 'Bow', 'Crossbow', 'Greatsword', 'Halberd', 'Katana', 'Scythe']
@@ -305,13 +317,16 @@ class InventoryCog(DiscordRPGCog):
         # Check for conflicts
         conflicts = []
         for eq_item in equipped_items:
-            eq_slot_type = eq_item.get('slot_type') or 'weapon'
+            eq_slot_type = eq_item.get('slot_type', 'weapon')
             
             # Armor slot conflicts - only one item per armor slot
             if slot_type in armor_slots and eq_slot_type == slot_type:
                 conflicts.append(eq_item)
             # Shield conflicts - only one shield allowed
             elif item_type == 'Shield' and eq_item['type'] == 'Shield':
+                conflicts.append(eq_item)
+            # PRIMARY WEAPON CHECK - Only one weapon allowed (moved up and simplified)
+            elif item_type in weapon_types and eq_item['type'] in weapon_types:
                 conflicts.append(eq_item)
             # Weapon/Shield conflicts - handle hand requirements
             elif slot_type == 'weapon' and eq_slot_type == 'weapon':
@@ -321,12 +336,9 @@ class InventoryCog(DiscordRPGCog):
                 # Specific hand conflicts (including shields)
                 elif hand in ['left', 'right'] and eq_item['hand'] == hand:
                     conflicts.append(eq_item)
-                # Weapon type conflicts - only one primary weapon allowed
-                elif item_type in weapon_types and eq_item['type'] in weapon_types:
-                    conflicts.append(eq_item)
                 # "Any" hand conflicts when both hands full
                 elif hand == 'any' and eq_item['hand'] in ['left', 'right', 'any']:
-                    if len([x for x in equipped_items if (x.get('slot_type') or 'weapon') == 'weapon' and x['hand'] in ['left', 'right', 'any']]) >= 2:
+                    if len([x for x in equipped_items if x.get('slot_type', 'weapon') == 'weapon' and x['hand'] in ['left', 'right', 'any']]) >= 2:
                         conflicts.append(eq_item)
                     
         # Unequip conflicting items
@@ -452,40 +464,136 @@ class InventoryCog(DiscordRPGCog):
         
     @commands.command()
     @has_character()
-    async def sell(self, ctx: commands.Context, item_id: int):
-        """Sell an item to the merchant"""
-        item = self.db.get_item_by_id(item_id)
-        if not item or item['owner'] != ctx.author.id:
-            await ctx.send("❌ Item not found or you don't own it!")
-            return
-            
-        if item['equipped']:
-            await ctx.send("❌ Cannot sell equipped items! Unequip it first.")
-            return
-            
-        # Calculate sell price (base value or stat-based)
-        sell_price = max(item['value'] // 4, (item['damage'] + item['armor']) * 10)
+    async def sell(self, ctx: commands.Context, *, item_input: str):
+        """Sell one or multiple items to the merchant (e.g. !sell 123 or !sell 123 456 789)"""
+        # Easter egg: Check if someone is trying to "sell" a user mention
+        if item_input.strip().startswith('<@'):
+            try:
+                # Extract user ID from mention format <@!123456> or <@123456>
+                user_id = int(item_input.strip().replace('<@!', '').replace('<@', '').replace('>', ''))
+                user = self.bot.get_user(user_id)
+                
+                # Check if it's Uncraftbar by user ID or username
+                is_uncraftbar = (user_id == 937002168374927390 or 
+                               (user and user.name.lower() == 'uncraftbar'))
+                
+                if is_uncraftbar:
+                    embed = self.embed("💰 Appraisal Result", "❌ This item has no value.")
+                    embed.add_field(
+                        name="Merchant's Note", 
+                        value="*The merchant examines the item closely, then shakes their head sadly*",
+                        inline=False
+                    )
+                    await ctx.send(embed=embed)
+                    return
+                else:
+                    await ctx.send("❌ You cannot sell people! Please provide item ID(s).")
+                    return
+            except (ValueError, AttributeError):
+                await ctx.send("❌ Invalid mention format! Please provide item ID(s).")
+                return
         
-        if not await ctx.confirm(f"Sell **{item['name']}** for **{sell_price:,}** gold?"):
-            await ctx.send("Sale cancelled.")
+        # Parse multiple item IDs - split by spaces and handle both single and multiple
+        item_inputs = item_input.strip().split()
+        item_ids = []
+        seen_ids = set()  # Track seen IDs to prevent duplicates
+
+        for input_str in item_inputs:
+            try:
+                item_id = int(input_str.strip())
+                # Deduplicate: only add if not already seen (prevents selling same item multiple times)
+                if item_id not in seen_ids:
+                    item_ids.append(item_id)
+                    seen_ids.add(item_id)
+            except (ValueError, TypeError):
+                await ctx.send(f"❌ Invalid item ID: '{input_str}'. Please provide valid item ID(s).")
+                return
+
+        if not item_ids:
+            await ctx.send("❌ Please provide at least one item ID.")
             return
             
-        # Remove item and give gold
-        self.db.delete_item(item_id)
+        # Get character data
         char_data = self.db.get_character(ctx.author.id)
-        new_money = char_data['money'] + sell_price
+        sell_confirmation = char_data.get('sell_confirmation', True)
+        
+        # Validate all items first
+        items_to_sell = []
+        total_value = 0
+        
+        for item_id in item_ids:
+            item = self.db.get_item_by_id(item_id)
+            if not item or item['owner'] != ctx.author.id:
+                await ctx.send(f"❌ Item {item_id} not found or you don't own it!")
+                return
+                
+            if item['equipped']:
+                await ctx.send(f"❌ Cannot sell equipped item {item_id} (**{item['name']}**)! Unequip it first.")
+                return
+
+            # Check if item is listed on market
+            market_listing = self.db.fetchone(
+                "SELECT id FROM market WHERE item_id = ?",
+                (item_id,)
+            )
+            if market_listing:
+                await ctx.send(f"❌ Cannot sell item {item_id} (**{item['name']}**) - it's listed on the market! Use `!unlist {item_id}` first.")
+                return
+
+            # Calculate sell price (base value or stat-based)
+            sell_price = max(item['value'] // 4, (item['damage'] + item['armor']) * 10)
+            items_to_sell.append((item, sell_price))
+            total_value += sell_price
+        
+        # Confirmation for multiple items
+        if sell_confirmation and len(items_to_sell) > 1:
+            item_list = "\n".join([f"• **{item['name']}** - {price:,} gold" for item, price in items_to_sell])
+            confirmation_text = f"Sell {len(items_to_sell)} items for **{total_value:,}** total gold?\n\n{item_list}"
+            if not await ctx.confirm(confirmation_text):
+                await ctx.send("Sale cancelled.")
+                return
+        elif sell_confirmation and len(items_to_sell) == 1:
+            item, price = items_to_sell[0]
+            if not await ctx.confirm(f"Sell **{item['name']}** for **{price:,}** gold?"):
+                await ctx.send("Sale cancelled.")
+                return
+        
+        # Process all sales
+        sold_items = []
+        for item, sell_price in items_to_sell:
+            # Remove item and update logs
+            self.db.delete_item(item['id'])
+            self.db.log_transaction(
+                ctx.author.id, None, sell_price, "item_sale",
+                {"item": item['name'], "item_id": item['id']}
+            )
+            sold_items.append(f"**{item['name']}** ({sell_price:,}g)")
+
+        # Update money
+        new_money = char_data['money'] + total_value
         self.db.update_character(ctx.author.id, money=new_money)
+
+        # Update quest progress for item sales
+        await self.update_quest_progress(ctx.author.id, 'items_sell', len(sold_items))
+        await self.update_quest_progress(ctx.author.id, 'gold_earn', total_value)
         
-        # Log transaction
-        self.db.log_transaction(
-            ctx.author.id, None, sell_price, "item_sale",
-            {"item": item['name'], "item_id": item_id}
-        )
+        # Create success message
+        if len(sold_items) == 1:
+            embed = self.success_embed(
+                f"Sold {sold_items[0]} for **{total_value:,}** gold!\n"
+                f"You now have **{new_money:,}** gold."
+            )
+        else:
+            items_text = "\n".join([f"• {item}" for item in sold_items])
+            embed = self.success_embed(
+                f"Sold {len(sold_items)} items for **{total_value:,}** total gold!\n\n{items_text}"
+            )
+            embed.add_field(
+                name="💰 New Balance",
+                value=f"**{new_money:,}** gold",
+                inline=True
+            )
         
-        embed = self.success_embed(
-            f"Sold **{item['name']}** for **{sell_price:,}** gold!\n"
-            f"You now have **{new_money:,}** gold."
-        )
         await ctx.send(embed=embed)
         
     @commands.command()
@@ -575,17 +683,21 @@ class InventoryCog(DiscordRPGCog):
         
         # Deduct crate
         self.db.update_character(ctx.author.id, **{crate_field: crate_count - 1})
-        
+
+        # Track crate opening for quests
+        await self.update_quest_progress(ctx.author.id, 'crates_open', 1)
+
         embed = self.embed(f"📦 {crate_name} Opened!")
         
         if reward_type == "money":
             # Give money
             new_money = char_data['money'] + money
             self.db.update_character(ctx.author.id, money=new_money)
-            
+            await self.update_quest_progress(ctx.author.id, 'gold_earn', money)
+
             embed.add_field(name="💰 Money Reward", value=f"{money:,} gold", inline=False)
             embed.color = discord.Color.gold()
-            
+
         else:  # item
             # Create item in database
             item_id = self.db.create_item(
@@ -594,7 +706,8 @@ class InventoryCog(DiscordRPGCog):
                 item.health_bonus, item.speed_bonus, item.luck_bonus,
                 item.crit_bonus, item.magic_bonus, item.slot_type
             )
-            
+            await self.update_quest_progress(ctx.author.id, 'items_acquire', 1)
+
             total_stats = item.damage + item.armor
             rarity_colors = {
                 "Common": 0x808080,

@@ -2,6 +2,7 @@
 import discord
 from discord.ext import commands
 import random
+import logging
 from datetime import datetime, timedelta
 
 import sys
@@ -10,8 +11,19 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from bot import DiscordRPGCog, has_character
 
+logger = logging.getLogger('DiscordRPG.Religion')
+
 class ReligionCog(DiscordRPGCog):
     """Religion and deity commands"""
+
+    async def update_quest_progress(self, user_id: int, objective_type: str, amount: int = 1):
+        """Helper to update personal quest progress"""
+        try:
+            quest_cog = self.bot.get_cog('PersonalQuestsCog')
+            if quest_cog:
+                await quest_cog.check_and_update_progress(user_id, objective_type, amount)
+        except Exception as e:
+            logger.debug(f"Quest progress update failed: {e}")
     
     # Gods with their properties: (name, description, luck_multiplier, sacrifice_multiplier)
     GODS = {
@@ -130,6 +142,7 @@ class ReligionCog(DiscordRPGCog):
         
         # Check if has a god
         if not char_data['god']:
+            ctx.command.reset_cooldown(ctx)
             await ctx.send("❌ You haven't chosen a god yet! Use `!gods` to see options.")
             return
             
@@ -161,10 +174,13 @@ class ReligionCog(DiscordRPGCog):
             
         total_favor = race_favor_bonus
         new_favor = char_data['favor'] + total_favor
-        
+
         # Update favor
         self.db.update_character(ctx.author.id, favor=new_favor)
-        
+
+        # Update quest progress for prayer
+        await self.update_quest_progress(ctx.author.id, 'prayers', 1)
+
         # Prayer messages based on god
         prayers = {
             "chaos": [
@@ -212,21 +228,38 @@ class ReligionCog(DiscordRPGCog):
     @commands.command()
     @has_character()
     @commands.cooldown(1, 43200, commands.BucketType.user)  # 12 hour cooldown
-    async def sacrifice(self, ctx: commands.Context, amount: int):
+    async def sacrifice(self, ctx: commands.Context, amount_str: str = None):
         """Sacrifice gold to your god for favor (12 hour cooldown)"""
+        # Check if amount provided
+        if not amount_str:
+            ctx.command.reset_cooldown(ctx)
+            await ctx.send("❌ Usage: `!sacrifice <amount>` - Minimum 100 gold")
+            return
+
+        # Parse amount (allow commas like 1,000 or 10,000)
+        try:
+            amount = int(amount_str.replace(',', ''))
+        except ValueError:
+            ctx.command.reset_cooldown(ctx)
+            await ctx.send("❌ Invalid amount! Use a number like `1000` or `1,000`")
+            return
+
         char_data = self.db.get_character(ctx.author.id)
-        
+
         # Check if has a god
         if not char_data['god']:
+            ctx.command.reset_cooldown(ctx)
             await ctx.send("❌ You haven't chosen a god yet! Use `!gods` to see options.")
             return
-            
+
         # Validate amount
         if amount < 100:
+            ctx.command.reset_cooldown(ctx)
             await ctx.send("❌ Minimum sacrifice is 100 gold!")
             return
-            
+
         if amount > char_data['money']:
+            ctx.command.reset_cooldown(ctx)
             await ctx.send(f"❌ You don't have enough gold! You have {char_data['money']:,} gold.")
             return
             
@@ -273,7 +306,10 @@ class ReligionCog(DiscordRPGCog):
             money=new_money,
             favor=new_favor
         )
-        
+
+        # Track gold spending for quests
+        await self.update_quest_progress(ctx.author.id, 'gold_spend', amount)
+
         # Sacrifice messages based on god
         sacrifices = {
             "chaos": "You toss gold into a swirling vortex...",
@@ -309,7 +345,7 @@ class ReligionCog(DiscordRPGCog):
     
     @commands.command(aliases=["blessing", "blessings"])
     @has_character()
-    async def bless(self, ctx: commands.Context, blessing_type: str = None):
+    async def bless(self, ctx: commands.Context, *, blessing_types: str = None):
         """Purchase divine blessings with accumulated favor"""
         char_data = self.db.get_character(ctx.author.id)
         
@@ -354,11 +390,12 @@ class ReligionCog(DiscordRPGCog):
             },
             "divination": {
                 "name": "🔮 Divination Blessing",
-                "description": "Guarantees adventure success for next adventure",
+                "description": "Guarantees success on your next adventure (consumed on use)",
                 "cost": 35,
-                "duration": 3600,  # 1 hour or until used
+                "duration": 0,  # No duration - consumed when adventure completes
                 "effect": "adventure_success",
-                "value": 1
+                "value": 1,
+                "is_charge": True  # Flag to indicate this is a one-time charge, not timed
             },
             "valor": {
                 "name": "⚔️ Valor Blessing",
@@ -371,7 +408,7 @@ class ReligionCog(DiscordRPGCog):
         }
         
         # Show all blessings if no specific one requested
-        if not blessing_type:
+        if not blessing_types:
             embed = self.embed(
                 f"✨ Divine Blessings",
                 f"Spend your accumulated favor for divine assistance!\n"
@@ -387,76 +424,155 @@ class ReligionCog(DiscordRPGCog):
             
             embed.add_field(
                 name="💡 Usage",
-                value="Use `!bless <type>` to purchase a blessing\nTypes: " + ", ".join(blessings.keys()),
+                value="Use `!bless <type>` to purchase a blessing\n"
+                      "Use `!bless <type1> <type2> ...` for multiple\n"
+                      "Use `!bless all` to buy all available blessings\n"
+                      "Types: " + ", ".join(blessings.keys()),
                 inline=False
             )
             
             # Show active blessings if any
             active_blessings = self.db.fetchall(
-                "SELECT * FROM divine_blessings WHERE user_id = ? AND expires_at > ?",
-                (ctx.author.id, datetime.now())
+                "SELECT * FROM divine_blessings WHERE user_id = ?",
+                (ctx.author.id,)
             )
-            
+
             if active_blessings:
-                active_text = "\n".join([
-                    f"**{b['effect']}** - {(datetime.fromisoformat(b['expires_at']) - datetime.now()).seconds // 60}m remaining"
-                    for b in active_blessings
-                ])
-                embed.add_field(name="🌟 Active Blessings", value=active_text, inline=False)
+                active_lines = []
+                for b in active_blessings:
+                    # Check if this is a charge-based blessing (like divination)
+                    if b['effect'] == 'adventure_success':
+                        active_lines.append(f"**{b['blessing_name']}** - Ready (1 charge)")
+                    else:
+                        # Timed blessing - show remaining time
+                        expires_at = datetime.fromisoformat(b['expires_at'])
+                        if expires_at > datetime.now():
+                            remaining_mins = (expires_at - datetime.now()).seconds // 60
+                            active_lines.append(f"**{b['blessing_name']}** - {remaining_mins}m remaining")
+
+                if active_lines:
+                    embed.add_field(name="🌟 Active Blessings", value="\n".join(active_lines), inline=False)
             
             await ctx.send(embed=embed)
             return
         
-        # Validate blessing type
-        if blessing_type.lower() not in blessings:
-            await ctx.send(f"❌ Unknown blessing type! Use `!bless` to see available options.")
-            return
+        # Parse requested blessings
+        requested = blessing_types.lower().split()
+        
+        # Handle "all" request
+        if "all" in requested:
+            # Get all blessings not currently active
+            current_blessings = self.db.fetchall(
+                "SELECT effect FROM divine_blessings WHERE user_id = ? AND expires_at > ?",
+                (ctx.author.id, datetime.now())
+            )
+            active_effects = [b['effect'] for b in current_blessings]
             
-        blessing = blessings[blessing_type.lower()]
+            # Filter to only non-active blessings
+            to_purchase = []
+            for key, blessing in blessings.items():
+                if blessing['effect'] not in active_effects:
+                    to_purchase.append(key)
+        else:
+            # Validate all requested blessing types
+            to_purchase = []
+            for blessing_type in requested:
+                if blessing_type not in blessings:
+                    await ctx.send(f"❌ Unknown blessing type: '{blessing_type}'! Use `!bless` to see available options.")
+                    return
+                to_purchase.append(blessing_type)
         
-        # Check favor cost
-        if char_data['favor'] < blessing['cost']:
-            await ctx.send(f"❌ Not enough favor! Need {blessing['cost']}, you have {char_data['favor']}.")
+        if not to_purchase:
+            await ctx.send("❌ No blessings to purchase! You may already have all active blessings.")
             return
         
-        # Check if blessing already active
-        existing = self.db.fetchone(
-            "SELECT * FROM divine_blessings WHERE user_id = ? AND effect = ? AND expires_at > ?",
-            (ctx.author.id, blessing['effect'], datetime.now())
-        )
+        # Check which blessings are already active and calculate total cost
+        already_active = []
+        can_purchase = []
+        total_cost = 0
         
-        if existing:
-            await ctx.send(f"❌ You already have an active {blessing['name']}!")
+        for blessing_key in to_purchase:
+            blessing = blessings[blessing_key]
+            
+            # Check if already active
+            existing = self.db.fetchone(
+                "SELECT * FROM divine_blessings WHERE user_id = ? AND effect = ? AND expires_at > ?",
+                (ctx.author.id, blessing['effect'], datetime.now())
+            )
+            
+            if existing:
+                already_active.append(blessing['name'])
+            else:
+                can_purchase.append((blessing_key, blessing))
+                total_cost += blessing['cost']
+        
+        # Show already active blessings if any
+        if already_active and not can_purchase:
+            await ctx.send(f"❌ All requested blessings are already active: {', '.join(already_active)}")
+            return
+        elif already_active:
+            await ctx.send(f"ℹ️ Skipping already active: {', '.join(already_active)}")
+        
+        # Check if player has enough favor
+        if char_data['favor'] < total_cost:
+            await ctx.send(f"❌ Not enough favor! Need {total_cost}, you have {char_data['favor']}.")
             return
         
-        # Purchase blessing
-        expires_at = datetime.now() + timedelta(seconds=blessing['duration'])
-        new_favor = char_data['favor'] - blessing['cost']
+        # Purchase all blessings
+        purchased_blessings = []
+        current_favor = char_data['favor']
+        
+        for blessing_key, blessing in can_purchase:
+            # For charge-based blessings, set a far-future expiration
+            if blessing.get('is_charge'):
+                expires_at = datetime.now() + timedelta(days=365 * 100)
+            else:
+                expires_at = datetime.now() + timedelta(seconds=blessing['duration'])
+            
+            # Add blessing to database
+            self.db.execute(
+                """INSERT INTO divine_blessings (user_id, effect, value, expires_at, blessing_name)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (ctx.author.id, blessing['effect'], blessing['value'], expires_at, blessing['name'])
+            )
+            
+            purchased_blessings.append(blessing)
+            current_favor -= blessing['cost']
         
         # Update favor
-        self.db.update_character(ctx.author.id, favor=new_favor)
-        
-        # Add blessing to database
-        self.db.execute(
-            """INSERT INTO divine_blessings (user_id, effect, value, expires_at, blessing_name)
-               VALUES (?, ?, ?, ?, ?)""",
-            (ctx.author.id, blessing['effect'], blessing['value'], expires_at, blessing['name'])
-        )
+        self.db.update_character(ctx.author.id, favor=current_favor)
         self.db.commit()
         
         # Get god info for themed response
         god_key = char_data['god'].lower()
         god_info = self.GODS.get(god_key, self.GODS['chaos'])
         
-        embed = self.embed(
-            f"✨ Divine Blessing Granted!",
-            f"{god_info['emoji']} **{god_info['name']}** bestows {blessing['name']} upon you!"
-        )
+        # Create response embed
+        if len(purchased_blessings) == 1:
+            blessing = purchased_blessings[0]
+            embed = self.embed(
+                f"✨ Divine Blessing Granted!",
+                f"{god_info['emoji']} **{god_info['name']}** bestows {blessing['name']} upon you!"
+            )
+            embed.add_field(name="💫 Effect", value=blessing['description'], inline=False)
+        else:
+            embed = self.embed(
+                f"✨ Multiple Divine Blessings Granted!",
+                f"{god_info['emoji']} **{god_info['name']}** bestows {len(purchased_blessings)} blessings upon you!"
+            )
+            
+            blessing_list = []
+            for blessing in purchased_blessings:
+                blessing_list.append(f"{blessing['name']}\n└ {blessing['description']}")
+            
+            embed.add_field(
+                name="💫 Blessings Received",
+                value="\n\n".join(blessing_list),
+                inline=False
+            )
         
-        embed.add_field(name="💫 Effect", value=blessing['description'], inline=False)
-        embed.add_field(name="⏰ Duration", value=f"{blessing['duration'] // 3600}h {(blessing['duration'] % 3600) // 60}m", inline=True)
-        embed.add_field(name="💰 Cost", value=f"{blessing['cost']} favor", inline=True) 
-        embed.add_field(name="🙏 Remaining Favor", value=f"{new_favor}", inline=True)
+        embed.add_field(name="💰 Total Cost", value=f"{total_cost} favor", inline=True)
+        embed.add_field(name="🙏 Remaining Favor", value=f"{current_favor}", inline=True)
         
         # Special god-themed blessing messages
         blessing_messages = {
@@ -483,10 +599,10 @@ class ReligionCog(DiscordRPGCog):
             "SELECT * FROM divine_blessings WHERE user_id = ? AND expires_at > ?",
             (user_id, current_time)
         )
-        
-        # Clean up expired blessings
+
+        # Clean up expired timed blessings (but NOT charge-based ones like adventure_success)
         self.db.execute(
-            "DELETE FROM divine_blessings WHERE user_id = ? AND expires_at <= ?",
+            "DELETE FROM divine_blessings WHERE user_id = ? AND expires_at <= ? AND effect != 'adventure_success'",
             (user_id, current_time)
         )
         self.db.commit()

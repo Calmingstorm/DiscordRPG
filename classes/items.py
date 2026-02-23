@@ -263,7 +263,7 @@ class ItemGenerator:
         return armor_stats.get(item_type, weapon_stats.get(item_type, {'damage': 0.5, 'armor': 0.5}))
     
     @staticmethod
-    def generate_item(owner_id: int, min_stat: int = 4, max_stat: int = 50, 
+    def generate_item(owner_id: int, min_stat: int = 4, max_stat: int = 200, 
                       item_type: Optional[ItemType] = None,
                       rarity: Optional[ItemRarity] = None) -> Item:
         """Generate a random item with stats"""
@@ -278,9 +278,9 @@ class ItemGenerator:
                 ItemRarity.UNCOMMON: (10, 19),
                 ItemRarity.RARE: (20, 29),
                 ItemRarity.MAGIC: (30, 39),
-                ItemRarity.LEGENDARY: (40, 44),
-                ItemRarity.MYTHIC: (45, 49),
-                ItemRarity.DIVINE: (50, 50)
+                ItemRarity.LEGENDARY: (40, 59),
+                ItemRarity.MYTHIC: (60, 79),
+                ItemRarity.DIVINE: (80, 120)
             }
             min_stat, max_stat = stat_ranges[rarity]
             
@@ -377,7 +377,7 @@ class ItemGenerator:
             return f"{prefix} {base_name}"
 
     @staticmethod
-    def generate_armor(owner_id: int, slot: str, min_stat: int = 4, max_stat: int = 50) -> Item:
+    def generate_armor(owner_id: int, slot: str, min_stat: int = 4, max_stat: int = 200) -> Item:
         """Generate armor for specific slot"""
         armor_types = {
             'head': ItemType.HELMET,
@@ -395,7 +395,7 @@ class ItemGenerator:
         return ItemGenerator.generate_item(owner_id, min_stat, max_stat, item_type)
 
     @staticmethod
-    def generate_random_equipment(owner_id: int, min_stat: int = 4, max_stat: int = 50) -> Item:
+    def generate_random_equipment(owner_id: int, min_stat: int = 4, max_stat: int = 200) -> Item:
         """Generate random equipment (weapon or armor) based on difficulty"""
         # 60% chance for weapons, 40% chance for armor
         if random.random() < 0.6:
@@ -418,41 +418,41 @@ class CrateSystem:
     
     CRATE_CONTENTS = {
         ItemRarity.COMMON: {
-            "min_stat": 4,
-            "max_stat": 15,
-            "money_chance": 0.3,
-            "money_range": (50, 200)
+            "min_stat": 8,
+            "max_stat": 25,
+            "money_chance": 0.20,
+            "money_range": (200, 800)
         },
         ItemRarity.UNCOMMON: {
-            "min_stat": 10,
-            "max_stat": 25,
-            "money_chance": 0.25,
-            "money_range": (100, 500)
+            "min_stat": 15,
+            "max_stat": 40,
+            "money_chance": 0.18,
+            "money_range": (500, 1500)
         },
         ItemRarity.RARE: {
-            "min_stat": 20,
-            "max_stat": 35,
-            "money_chance": 0.2,
-            "money_range": (300, 1000)
+            "min_stat": 25,
+            "max_stat": 60,
+            "money_chance": 0.15,
+            "money_range": (1000, 3000)
         },
         ItemRarity.MAGIC: {
-            "min_stat": 30,
-            "max_stat": 42,
-            "money_chance": 0.15,
-            "money_range": (800, 2000)
+            "min_stat": 40,
+            "max_stat": 85,
+            "money_chance": 0.12,
+            "money_range": (2500, 6000)
         },
         ItemRarity.LEGENDARY: {
-            "min_stat": 40,
-            "max_stat": 50,
-            "money_chance": 0.1,
-            "money_range": (1500, 5000)
+            "min_stat": 60,
+            "max_stat": 150,
+            "money_chance": 0.08,
+            "money_range": (5000, 15000)
         },
         "mystery": {
             "rarities": [
-                (ItemRarity.COMMON, 0.4),
-                (ItemRarity.UNCOMMON, 0.3),
-                (ItemRarity.RARE, 0.15),
-                (ItemRarity.MAGIC, 0.1),
+                (ItemRarity.COMMON, 0.30),
+                (ItemRarity.UNCOMMON, 0.35),
+                (ItemRarity.RARE, 0.20),
+                (ItemRarity.MAGIC, 0.10),
                 (ItemRarity.LEGENDARY, 0.05)
             ]
         }

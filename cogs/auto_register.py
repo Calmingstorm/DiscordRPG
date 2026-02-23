@@ -18,6 +18,11 @@ EST = timezone(timedelta(hours=-5))
 class AutoRegisterCog(DiscordRPGCog):
     """Automatic registration and penalty system"""
     
+    def __init__(self, bot):
+        super().__init__(bot)
+        # Track users who are currently in interactive commands
+        self.bot.interactive_users = getattr(self.bot, 'interactive_users', set())
+    
     async def cog_load(self):
         """Register all existing members when cog loads"""
         # Don't block cog loading - do this in background
@@ -84,22 +89,12 @@ class AutoRegisterCog(DiscordRPGCog):
             cursor = self.db.execute(
                 """INSERT OR IGNORE INTO profile 
                    (user_id, name, level, xp, money, race, class, health, speed, luck, created_at)
-                   VALUES (?, ?, 1, 0, 100, 'Human', 'Novice', 100, 10, 1, ?)""",
-                (member.id, char_name, datetime.now(EST))
+                   VALUES (?, ?, 1, 0, 100, 'Human', 'Novice', 100, 1, 1, ?)""",
+                (member.id, char_name, datetime.now().isoformat())
             )
             
             # Check if the insert actually happened (rowcount > 0)
             if cursor.rowcount > 0:
-                # Create starter items
-                self.db.execute(
-                    "INSERT INTO inventory (owner, name, type, value, damage, armor, hand, equipped) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
-                    (member.id, "Starter Sword", "Sword", 10, 3, 0, "left")
-                )
-                self.db.execute(
-                    "INSERT INTO inventory (owner, name, type, value, damage, armor, hand, equipped) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
-                    (member.id, "Starter Shield", "Shield", 10, 0, 3, "right")
-                )
-                
                 self.db.commit()
                 return True
             else:
@@ -124,14 +119,16 @@ class AutoRegisterCog(DiscordRPGCog):
                 (member.id, char_name, datetime.now(EST))
             )
             
-            # Create starter items
-            self.db.execute(
-                "INSERT INTO inventory (owner, name, type, value, damage, armor, hand, equipped) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
-                (member.id, "Starter Sword", "Sword", 10, 3, 0, "left")
+            # Create starter items with proper stats
+            self.db.create_item(
+                member.id, "Starter Sword", "Sword", 10, 3, 0, "any",
+                health_bonus=0, speed_bonus=0, luck_bonus=0.0, 
+                crit_bonus=0.0, magic_bonus=0, slot_type="weapon"
             )
-            self.db.execute(
-                "INSERT INTO inventory (owner, name, type, value, damage, armor, hand, equipped) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
-                (member.id, "Starter Shield", "Shield", 10, 0, 3, "right")
+            self.db.create_item(
+                member.id, "Starter Shield", "Shield", 10, 0, 3, "left",
+                health_bonus=0, speed_bonus=0, luck_bonus=0.0,
+                crit_bonus=0.0, magic_bonus=0, slot_type="shield"
             )
             
             # Set character alignment to neutral by default
@@ -200,6 +197,7 @@ class AutoRegisterCog(DiscordRPGCog):
         logger.info(f"ALIGN command called by {ctx.author.name} with alignment {alignment}")
         
         if alignment.lower() not in ['good', 'neutral', 'evil']:
+            ctx.command.reset_cooldown(ctx)
             await ctx.send("❌ Alignment must be: good, neutral, or evil")
             return
             
@@ -243,6 +241,10 @@ class AutoRegisterCog(DiscordRPGCog):
             
         # Only apply penalties in game channels
         if message.channel.name.lower() not in ['discordrpg', 'rpg', 'game', 'bot']:
+            return
+            
+        # Skip if user is in an interactive command (like evolve)
+        if hasattr(self.bot, 'interactive_users') and message.author.id in self.bot.interactive_users:
             return
             
         # Skip if message is only emojis/reactions

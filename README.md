@@ -1,231 +1,127 @@
-# DiscordRPG - AI-Powered Idle RPG Bot 🎮
+# DiscordRPG
 
-A comprehensive Discord bot implementing a full-featured RPG game system with automated progression, complex character systems, AI-generated events, and extensive player interactions.
+A full-featured Discord RPG bot with automated progression, AI-generated events, 42+ classes, 10 races, and idle gameplay. Players progress while online through adventures, battles, raids, and dynamic AI events.
 
-## ✨ Features
+## Features
 
-### 🤖 **AI-Powered Systems**
-- **Dynamic AI Events**: OpenAI-generated unique events every 15 minutes with custom narratives and themed items
-- **Living Game Manual**: AI Oracle that answers questions about the game using real-time data
-- **Smart Fallbacks**: Graceful degradation when AI services are unavailable
+**AI-Powered Systems** (optional, requires OpenAI key)
+- Dynamic AI events every 15 minutes with unique narratives and themed loot
+- AI Oracle — a living game manual that answers player questions with real-time data
+- AI-generated multi-chapter personal quest lines
 
-### 🎯 **Core Gameplay**
-- **Automated Progression**: Players progress while online through adventures, battles, and events
-- **Complex Character System**: 6-tier class evolution paths with 42+ unique classes
-- **10 Unique Races**: Each with distinct bonuses and playstyles
-- **Advanced Equipment**: 16+ weapon types, 5 armor slots, complex stat system
+**Core Gameplay**
+- Automated idle progression — adventures, battles, raids run while players are online
+- 6-tier class evolution system with 42+ classes across 7 specialization paths
+- 10 playable races with distinct stat bonuses
+- 16+ weapon types, 7 equipment slots, 8 stat categories
+- Epic and legendary adventure tiers (4-24 hour durations)
 
-### 🌟 **Advanced Systems**
-- **Epic & Legendary Adventures**: High-tier parallel adventure system (4-24 hours)
-- **Religion System**: 5 gods with unique bonuses and blessing systems
-- **Economy**: Global marketplace, direct trading, daily shops
-- **Social Features**: Guilds, marriages, PvP tournaments
-- **Gambling**: Multiple casino games with luck-based mechanics
+**Economy & Social**
+- Global marketplace and direct player-to-player trading
+- Religion system with 5 gods, prayers, sacrifices, and divine blessings
+- Gambling, daily rewards with streaks, crate system
+- Guilds, marriages, PvP combat, and leaderboards
 
-### 📊 **Automation Features**
-- **Multiple Game Loops**: Adventures (7-21min), Battles (2-8min), Raids (35min), AI Events (15min)
-- **Smart Player Selection**: Automatic online player detection and participation
-- **Dynamic Rewards**: Race, religion, and blessing multipliers
-- **Progression Tracking**: Automatic level-ups, stat increases, and notifications
+**Web Leaderboards**
+- PHP-based web dashboard showing player rankings, item leaderboards, game stats
+- Included in `web/` directory, connects to the same MariaDB database
 
-## 🚀 Quick Start
+**Infrastructure**
+- MariaDB/MySQL backend with proper indexing and foreign keys
+- Automated database backups (hourly + daily via mysqldump)
+- Modular cog architecture — each system is an independent module
+- Runs as a systemd service with auto-restart
 
-### Prerequisites
-- Python 3.8+
-- Discord Application with Bot Token
-- SQLite3
-- Optional: OpenAI API Key (for AI features)
+## Quick Start
 
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/discordrpg.git
-   cd discordrpg
-   ```
-
-2. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Configure environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Discord bot token and optionally OpenAI API key
-   ```
-
-4. **Initialize database**
-   ```bash
-   python3 update_database.py
-   ```
-
-5. **Start the bot**
-   ```bash
-   python3 start.py
-   ```
-
-### Discord Bot Setup
-
-1. Create a Discord Application at https://discord.com/developers/applications
-2. Create a Bot and copy the token to your `.env` file
-3. Enable the following Bot Permissions:
-   - Send Messages
-   - Use Slash Commands
-   - Embed Links
-   - Read Message History
-   - Add Reactions
-   - Manage Messages (for pagination)
-
-4. Invite to your server with OAuth2 URL generator
-
-### OpenAI Setup (Optional)
-
-For AI-powered events and the Oracle system:
-
-1. Get an OpenAI API key from https://platform.openai.com/
-2. Set `OPENAI_ENABLED=true` in your `.env` file
-3. Add your API key as `OPENAI_API_KEY=your_key_here`
-
-Without OpenAI, the bot will use fallback templates for events.
-
-## 🎮 How to Play
-
-### Getting Started
-1. Join a Discord server with the bot
-2. Type `!create [name]` to create your character
-3. Stay online (green status) to automatically participate in adventures and battles
-4. Use `!help` to see all available commands
-
-### Key Commands
-- `!profile` - View your character stats and progress
-- `!inventory` - Manage your equipment and items
-- `!classes` - View class evolution paths
-- `!evolve` - Evolve your class at levels 5, 10, 15, 20, 25, 30
-- `!market` - Buy and sell items with other players
-- `!epicstatus` - Check your epic adventure progress
-- `!ask [question]` - Ask the AI Oracle about the game (if enabled)
-
-### Progression System
-- **Automatic Adventures**: Every 7-21 minutes while online
-- **Battles**: Random PvP battles every 2-8 minutes
-- **Epic Adventures**: High-tier adventures every 45 minutes (level 10+)
-- **AI Events**: Unique events every 15 minutes (if OpenAI enabled)
-- **Raids**: Group content every 35 minutes
-
-## 🏗️ Architecture
-
-### Directory Structure
+```bash
+git clone https://github.com/Calmingstorm/DiscordRPG.git
+cd DiscordRPG
+pip install -r requirements.txt
+cp .env.example .env
+# Edit .env with your Discord token and database credentials
+python3 setup.py
+python3 start.py
 ```
-discordrpg/
-├── bot.py                 # Main bot class and startup
-├── start.py              # Entry point
-├── schema.sql            # Database schema
-├── requirements.txt      # Python dependencies
+
+See [INSTALL.md](INSTALL.md) for full setup instructions including MariaDB, systemd service, and web leaderboard deployment.
+
+## Directory Structure
+
+```
+DiscordRPG/
+├── bot.py                  # Main bot class and entry config
+├── start.py                # Entry point
+├── setup.py                # Interactive setup script
+├── schema.sql              # MariaDB database schema
+├── requirements.txt        # Python dependencies
+├── .env.example            # Configuration template
 ├── classes/
-│   ├── character.py      # Character classes and races
-│   └── items.py          # Item generation and management
+│   ├── character.py        # Character class definitions and evolution
+│   └── items.py            # Item generation and stat system
 ├── cogs/
-│   ├── ai_events.py      # AI-powered dynamic events
-│   ├── oracle.py         # AI game manual system
-│   ├── character.py      # Character management
-│   ├── combat.py         # PvP and battle systems
-│   ├── economy.py        # Market and trading
-│   ├── epic_adventures.py # High-tier adventures
-│   ├── autoplay.py       # Automatic gameplay loops
-│   ├── raids.py          # Group raid system
-│   ├── religion.py       # Gods and blessings
-│   ├── race.py           # Character races
-│   └── ...               # Additional game systems
-└── utils/
-    └── database.py       # Database abstraction layer
+│   ├── auto_register.py    # Auto-registration on join
+│   ├── character.py        # Character management commands
+│   ├── inventory.py        # Equipment and item management
+│   ├── combat.py           # PvP battle system
+│   ├── epic_adventures.py  # Epic/legendary adventure tier
+│   ├── economy.py          # Market, trading, shops
+│   ├── daily.py            # Daily rewards and streaks
+│   ├── gambling.py         # Casino games
+│   ├── religion.py         # Gods, prayer, blessings
+│   ├── race.py             # Race selection and bonuses
+│   ├── autoplay.py         # Automated game loops
+│   ├── raids.py            # Group raid bosses
+│   ├── oracle.py           # AI game manual (OpenAI)
+│   ├── ai_events.py        # AI dynamic events (OpenAI)
+│   ├── personal_quests.py  # AI quest lines (OpenAI)
+│   ├── backup.py           # Automated DB backups
+│   └── help.py             # Help command
+├── utils/
+│   ├── database.py         # MariaDB connection and query layer
+│   └── scaling.py          # Balance and scaling calculations
+└── web/
+    ├── db_config.php       # Database config (reads from .env)
+    ├── index.php           # Main leaderboard dashboard
+    ├── top-items.php       # Equipment leaderboard
+    └── guide.php           # Game guide
 ```
 
-### Key Systems
+## Commands
 
-#### AI Event System
-- Uses OpenAI GPT-4o-mini to generate unique events
-- Creates thematic item names and narratives
-- Handles 4 event types: Treasure, Mini Boss, World Event, Mystery
-- Graceful fallback to hand-crafted templates
+| Command | Description |
+|---------|-------------|
+| `!create [name]` | Create a character |
+| `!profile` | View your stats |
+| `!inventory` | Manage equipment |
+| `!classes` / `!evolve` | View and evolve your class |
+| `!race` | Choose or view your race |
+| `!market` | Browse the player marketplace |
+| `!pray` / `!sacrifice` | Interact with your god |
+| `!epicstatus` | Check epic adventure progress |
+| `!quest` | View your personal quest |
+| `!ask [question]` | Ask the AI Oracle (if enabled) |
+| `!help` | Full command list |
 
-#### Class Evolution System
-- 6 tiers of progression (Novice → Immortal)
-- 7 distinct class paths with branching specializations
-- All paths converge at Eternal (level 25) then Immortal (level 30)
-- Dynamic stat bonuses based on class and tier
+Players progress automatically while online — no commands needed for basic gameplay.
 
-#### Database Design
-- SQLite with proper normalization
-- Transaction safety for concurrent operations
-- Automatic backups and migration system
-- Optimized queries with proper indexing
+## Configuration
 
-## 🔧 Configuration
+All configuration is in `.env`. See [.env.example](.env.example) for all options.
 
-### Environment Variables
-See `.env.example` for all available configuration options.
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DISCORD_TOKEN` | Yes | Your Discord bot token |
+| `DB_HOST` | Yes | MariaDB/MySQL host |
+| `DB_USER` | Yes | Database username |
+| `DB_PASS` | Yes | Database password |
+| `DB_NAME` | Yes | Database name |
+| `BOT_PREFIX` | No | Command prefix (default: `!`) |
+| `OPENAI_ENABLED` | No | Enable AI features (default: `false`) |
+| `OPENAI_API_KEY` | No | OpenAI API key for AI features |
 
-### Game Balance
-- XP Formula: `level = 1 + int((xp / 100) ** 0.5)`
-- Item Stats: 1-50 total stats based on tier and rarity
-- Success Rates: Modified by equipment, level, and luck
-- Rewards: Scaled by race bonuses and divine blessings
+The bot works fully without OpenAI — AI features fall back to handcrafted templates.
 
-### AI Configuration
-- Model: GPT-4o-mini (cost-effective for frequent events)
-- Rate Limiting: Handled with fallbacks
-- Content Moderation: Family-friendly prompts and validation
+## License
 
-## 📊 Monitoring
-
-### Logging
-- Comprehensive logging with rotation
-- Error tracking and performance monitoring
-- Event and reward logging for balance analysis
-
-### Admin Commands
-- `!aieventsstatus` - Check AI events system status
-- Database backup and restoration tools
-- Performance monitoring and statistics
-
-## 🤝 Contributing
-
-### Development Setup
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-### Code Style
-- Follow existing patterns and conventions
-- Add docstrings to new functions
-- Keep AI prompts family-friendly
-- Test with both AI enabled and disabled
-
-### Adding New Features
-- New game systems should follow the cog pattern
-- Database changes require migration scripts
-- AI features should have fallback implementations
-- Document new commands in help system
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- **OpenAI** - For AI-powered event generation and Oracle system
-- **Discord.py** - For the excellent Discord bot framework
-- **SQLite** - For reliable local database storage
-
-## 📞 Support
-
-- Create an issue for bug reports or feature requests
-- Check existing issues before creating new ones
-- Provide detailed information about your setup and the problem
-
----
-
-**Enjoy your AI-powered Discord RPG adventure!** 🎲✨
+MIT License. See [LICENSE](LICENSE) for details.
