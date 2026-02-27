@@ -527,7 +527,7 @@ class ReligionCog(DiscordRPGCog):
         for blessing_key, blessing in can_purchase:
             # For charge-based blessings, set a far-future expiration
             if blessing.get('is_charge'):
-                expires_at = datetime.now() + timedelta(days=365 * 100)
+                expires_at = datetime.now() + timedelta(days=365)
             else:
                 expires_at = datetime.now() + timedelta(seconds=blessing['duration'])
             
