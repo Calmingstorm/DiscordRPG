@@ -316,6 +316,16 @@ CREATE TABLE `profile` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `achievements` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `user_id` bigint(20) NOT NULL,
+  `achievement_key` varchar(96) NOT NULL,
+  `unlocked_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_achievement_user_key` (`user_id`,`achievement_key`),
+  KEY `idx_achievements_user` (`user_id`),
+  CONSTRAINT `achievements_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `profile` (`user_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE `quest_chapters` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `quest_id` bigint(20) DEFAULT NULL,

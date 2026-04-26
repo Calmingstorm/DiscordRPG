@@ -18,6 +18,7 @@ from utils.scaling import (
     calculate_xp_reward, calculate_gold_reward, calculate_battle_xp,
     get_tier_from_difficulty, get_level_bonus
 )
+from utils.loot import generate_loot, loot_summary
 
 logger = logging.getLogger('DiscordRPG.AutoPlay')
 
@@ -37,6 +38,16 @@ class AutoPlayCog(DiscordRPGCog):
             item.health_bonus, item.speed_bonus, item.luck_bonus,
             item.crit_bonus, item.magic_bonus, item.slot_type
         )
+
+    def create_loot_drop(self, user_id: int, player_level: int, luck: float = 1.0):
+        """Generate and persist a scaled loot drop."""
+        drop = generate_loot(user_id, player_level=player_level, luck=luck)
+        item_id = self.db.create_item(
+            user_id, drop.name, drop.item_type, drop.value, drop.damage, drop.armor, drop.hand,
+            drop.health_bonus, drop.speed_bonus, drop.luck_bonus, drop.crit_bonus,
+            drop.magic_bonus, drop.slot_type
+        )
+        return drop, item_id
 
     async def update_quest_progress(self, user_id: int, objective_type: str, amount: int = 1):
         """Helper to update personal quest progress"""
@@ -1320,14 +1331,10 @@ class AutoPlayCog(DiscordRPGCog):
                                 # Ensure min <= max
                                 max_stat = max(min_stat, max_stat)
 
-                                item = ItemGenerator.generate_item(
-                                    adventure['user_id'],
-                                    min_stat=min_stat,
-                                    max_stat=max_stat
+                                drop, item_id = self.create_loot_drop(
+                                    adventure['user_id'], player_level, char_data.get('luck', 1.0)
                                 )
-
-                                self.create_item_in_db(item)
-                                item_bonus = f" + **{item.name}**"
+                                item_bonus = f" + {loot_summary(drop, item_id)}"
                                 # Update quest progress for item acquisition
                                 await self.update_quest_progress(adventure['user_id'], 'items_acquire', 1)
                             
@@ -1354,6 +1361,11 @@ class AutoPlayCog(DiscordRPGCog):
                         completion_list.append(completion_text)
                     
                     self.db.commit()
+
+                    achievements_cog = self.bot.get_cog('AchievementsCog')
+                    if achievements_cog:
+                        for adventure in online_completed:
+                            await achievements_cog.check_achievements(adventure['user_id'], channel)
                     
                     # Send single embed with all completions (truncate if too long)
                     completion_text = "\n".join(completion_list)
@@ -1509,14 +1521,10 @@ class AutoPlayCog(DiscordRPGCog):
                             max_stat = min(100, effective_difficulty // 2 + 10)
                             max_stat = max(min_stat, max_stat)
 
-                            item = ItemGenerator.generate_item(
-                                adventure['user_id'],
-                                min_stat=min_stat,
-                                max_stat=max_stat
+                            drop, item_id = self.create_loot_drop(
+                                adventure['user_id'], player_level, char_data.get('luck', 1.0)
                             )
-
-                            self.create_item_in_db(item)
-                            item_text = f"\n🎁 Found: **{item.name}**"
+                            item_text = loot_summary(drop, item_id)
                         
                         completion_embed = self.embed(
                             f"✅ Adventure Success!",
@@ -1565,12 +1573,16 @@ class AutoPlayCog(DiscordRPGCog):
                     if item_text:
                         completion_embed.add_field(
                             name="🎁 Bonus Item",
-                            value=item_text.replace("\n🎁 Found: **", "").replace("**", ""),
+                            value=item_text,
                             inline=False
                         )
                     
                     self.db.commit()
                     await channel.send(embed=completion_embed)
+
+                    achievements_cog = self.bot.get_cog('AchievementsCog')
+                    if achievements_cog:
+                        await achievements_cog.check_achievements(adventure['user_id'], channel)
                 
         except Exception as e:
             logger.error(f"Error in level_up_check: {e}")

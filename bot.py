@@ -112,6 +112,8 @@ class DiscordRPGBot(commands.Bot):
             "cogs.epic_adventures",  # Epic and legendary adventures
             "cogs.economy",
             "cogs.daily",
+            "cogs.achievements",  # Player achievement tracking
+            "cogs.quests_board",  # Daily/weekly objective board
             "cogs.gambling",
             "cogs.religion",  # Gods, prayer, and sacrifice
             "cogs.race",  # Race selection and bonuses
@@ -175,6 +177,10 @@ class DiscordRPGBot(commands.Bot):
             await ctx.send(f"⏰ Command on cooldown. Try again in {error.retry_after:.1f}s")
         elif isinstance(error, commands.CheckFailure):
             await ctx.send("❌ You don't have permission to use this command")
+        elif isinstance(error, commands.CommandInvokeError):
+            original = error.original
+            logger.error(f"Command {ctx.command} failed: {original}", exc_info=original)
+            await ctx.send("❌ That command hit a runtime error. The ravens have logged the stack trace.")
         else:
             logger.error(f"Unhandled error in {ctx.command}: {error}", exc_info=error)
             await ctx.send("❌ An unexpected error occurred")

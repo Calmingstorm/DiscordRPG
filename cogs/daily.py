@@ -177,6 +177,10 @@ class DailyCog(DiscordRPGCog):
         embed.set_footer(text=f"Come back tomorrow to continue your streak!")
         embed.color = discord.Color.gold()
         await ctx.send(embed=embed)
+
+        achievements_cog = ctx.bot.get_cog('AchievementsCog')
+        if achievements_cog:
+            await achievements_cog.check_achievements(ctx.author.id, ctx.channel)
         
     @commands.command(aliases=["streaks"])
     @has_character()

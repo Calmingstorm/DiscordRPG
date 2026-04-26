@@ -84,3 +84,23 @@ All loops run automatically while players are online — no commands needed.
 - **Web Leaderboard**: PHP dashboard included in `web/` directory
 - **Environment-Based Config**: All settings in `.env`, no hardcoded values
 - **Graceful Degradation**: AI features fall back to templates, reconnects on DB errors
+
+## New Progression Systems
+
+### Achievements
+Players now unlock account-wide achievements for progression, combat, economy, daily streaks, loot, and religion milestones.
+
+Commands:
+- `!achievements` / `!ach` / `!badges` — view a player's unlocked achievements and next targets
+- `!achievementlist` — list the full achievement catalog
+- `!achievementboard` / `!achlb` — achievement points leaderboard
+
+### Objective Board
+A rotating checklist gives players daily and weekly goals with claimable XP/gold rewards.
+
+Commands:
+- `!quests` / `!objectives` / `!tasks` — show current daily and weekly objectives
+- `!claimquests` / `!claimobjectives` / `!claimtasks` — claim completed objective rewards
+
+### Loot Tables
+Adventure item rewards now use rarity-aware loot generation with themed names and level-scaled stats instead of plain generic drops.

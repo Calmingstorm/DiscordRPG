@@ -106,6 +106,10 @@ class CharacterCog(DiscordRPGCog):
         )
         embed.set_footer(text="Begin your adventure now!")
         await ctx.send(embed=embed)
+
+        achievements_cog = ctx.bot.get_cog('AchievementsCog')
+        if achievements_cog:
+            await achievements_cog.check_achievements(ctx.author.id, ctx.channel)
         
     @commands.command(aliases=["p", "stats", "char"])
     async def profile(self, ctx: commands.Context, user: Optional[discord.User] = None):

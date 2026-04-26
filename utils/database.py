@@ -105,6 +105,21 @@ class Database:
                 conn.commit()
                 print("Added sell_confirmation column to profile table")
 
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS achievements (
+                    id BIGINT NOT NULL AUTO_INCREMENT,
+                    user_id BIGINT NOT NULL,
+                    achievement_key VARCHAR(96) NOT NULL,
+                    unlocked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (id),
+                    UNIQUE KEY uq_achievement_user_key (user_id, achievement_key),
+                    KEY idx_achievements_user (user_id),
+                    CONSTRAINT achievements_ibfk_1
+                        FOREIGN KEY (user_id) REFERENCES profile (user_id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+            conn.commit()
+
             self._migrate_legacy_equipment(conn)
 
         except Exception as e:
@@ -498,6 +513,42 @@ class Database:
         )
         self.commit()
         return True
+
+    # --- Achievement operations ---
+    def get_achievement_keys(self, user_id: int) -> List[str]:
+        rows = self.fetchall(
+            "SELECT achievement_key FROM achievements WHERE user_id = ? ORDER BY unlocked_at ASC",
+            (user_id,)
+        )
+        return [row['achievement_key'] for row in rows]
+
+    def get_user_achievements(self, user_id: int) -> List[Dict[str, Any]]:
+        rows = self.fetchall(
+            """SELECT achievement_key, unlocked_at
+               FROM achievements
+               WHERE user_id = ?
+               ORDER BY unlocked_at ASC""",
+            (user_id,)
+        )
+        return [self.row_to_dict(row) for row in rows]
+
+    def unlock_achievements(self, user_id: int, achievement_keys: List[str]) -> List[str]:
+        if not achievement_keys:
+            return []
+        unlocked = []
+        try:
+            for key in achievement_keys:
+                cursor = self.execute(
+                    "INSERT IGNORE INTO achievements (user_id, achievement_key) VALUES (?, ?)",
+                    (user_id, key)
+                )
+                if cursor.rowcount:
+                    unlocked.append(key)
+            self.commit()
+            return unlocked
+        except Exception:
+            self.get_connection().rollback()
+            return []
 
     # --- Transaction logging ---
     def log_transaction(self, from_user: Optional[int], to_user: Optional[int],
