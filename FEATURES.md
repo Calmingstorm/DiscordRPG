@@ -1,106 +1,128 @@
-# DiscordRPG Features
+# DiscordRPG Feature Compendium
 
-## AI-Powered Features (Optional)
+DiscordRPG is a persistent Discord idle RPG with enough systems to make a spreadsheet blush. This document is the operator/player-facing tour of what is currently in the box.
 
-### Dynamic AI Events
-- OpenAI-generated events every 15 minutes with unique narratives
-- AI creates thematic item names that match event lore
-- Event types: treasure hunts, boss fights, world events, mystery encounters
-- Falls back to handcrafted templates without an OpenAI key
+## Core Loop
 
-### AI Oracle
-- Real-time help system that answers questions about game mechanics
-- Context-aware — uses actual game data and character information
-- Available in DMs or server channels
+1. Create a character.
+2. Pick a race and class path.
+3. Gain experience, gold, loot, achievements, and objective progress.
+4. Equip better gear, evolve your class, pray to a god, gamble irresponsibly, and raid with the server.
+5. Repeat until the leaderboard becomes a personality disorder.
 
-### Personal Quest Lines
-- AI-generated multi-chapter quest arcs unique to each player
-- Story choices affect outcomes and rewards
+The bot supports both active commands and automated progression for online players, so the game keeps breathing between command bursts.
 
-## Core Gameplay
+## Character Progression
 
-### Character Progression
-- **6-Tier Evolution**: Novice → Tier 1-5 → Immortal (42+ classes)
-- **7 Class Paths**: Warrior, Thief, Mage, Ranger, Raider, Ritualist, Paragon
-- **10 Playable Races**: Human, Elf, Dwarf, Orc, Halfling, Gnome, Dragonborn, Tiefling, Undead, Demon
-- Convergent endgame — all paths lead to Eternal → Immortal
+- Character creation with persistent MariaDB-backed profiles
+- 10 playable races with distinct stat modifiers
+- 42+ classes across 6 evolution tiers
+- 7 specialization paths for long-term build identity
+- Level, experience, gold, stats, PvP record, class bonuses, descriptions, profile color, and social fields
+- Class evolution commands with level gates and visible upgrade paths
+- Race browsing, race selection, and race-change support
 
-### Equipment System
-- 16+ weapon types: swords, axes, bows, staves, daggers, and more
-- 7 equipment slots: weapon + 5 armor + accessory
-- 8 stat categories: damage, armor, health, speed, luck, crit, magic, special
-- Quality tiers with 1-50 stat points and multiple rarity levels
+## Loot and Equipment
 
-## Automated Game Loops
+- Generated weapons, shields, and armor
+- 16+ weapon families including swords, axes, hammers, bows, staves, daggers, spears, wands, crossbows, greatswords, halberds, katanas, and scythes
+- Equipment slots for weapon, shield, head, chest, legs, hands, and feet
+- One-handed, two-handed, and shield hand rules
+- Rarity and stat scaling
+- Generated item names and type-specific stat distributions
+- Inventory, equipment, item inspection, selling, giving, crates, and item leaderboards
 
-All loops run automatically while players are online — no commands needed.
+## Achievements and Objectives
 
-| System | Frequency | Duration | Unlock |
-|--------|-----------|----------|--------|
-| Adventures | 7-21 min | 5 min - 2 hr | Level 1 |
-| Battles | 2-8 min | Instant (1v1 to 10v10) | Level 1 |
-| Epic Adventures | 45 min | 4-8 hr | Level 10 |
-| Legendary Adventures | Epic pool | 8-24 hr | Level 15 |
-| Raids | 35 min | Group boss fights | Level 5 |
-| AI Events | 15 min | Varies | Level 1 |
+- Achievement tracking with categories, icons, unlock state, and leaderboard support
+- Daily/weekly-style objective board
+- Claimable objective rewards
+- Additional progression pressure for players who need checklists to feel alive
 
-- Only online (green status) players participate
-- Content scales to player level
-- Multiple activities run in parallel
+## Idle and Adventure Systems
 
-## Religion and Blessings
+- Automated progression loops for online players
+- Adventure triggering and status commands
+- Epic and legendary adventure tiers with long-duration reward cadence
+- Raid boss lifecycle and raid status tools
+- Online player visibility
 
-- **5 Gods**: Luminara (light), Nyxara (darkness), Terranos (earth), Aquanis (water), Pyrion (fire)
-- Daily prayers build divine favor over time
-- Active blessings grant temporary XP/gold multipliers
-- Sacrifice items for favor with your chosen deity
+## Combat and Raids
+
+- Player-versus-player battles
+- Battle status and battle history/status commands
+- Tournament support
+- Raid bosses with participant tracking, damage/reward handling, MVP-style outcomes, and consolation rewards
 
 ## Economy
 
-- **Global Marketplace**: Buy and sell items between players
-- **Direct Trading**: Player-to-player item exchanges
-- **Daily Shops**: NPC merchants with rotating stock
-- **Gold Sinks**: Class evolution, equipment upgrades, gambling
+- Player marketplace
+- Item offers and purchases
+- Direct player trades
+- Shop and shop purchase commands
+- Withdrawals and gold movement
+- Gambling commands: coin flip, slots, blackjack, dice, and general gamble entry point
+- Daily rewards, streaks, voting rewards, and economy leaderboards
 
-## Social
+## Religion
 
-- **Marriages**: Player partnerships with gameplay bonuses
-- **Guilds**: Group membership and coordination
-- **PvP Combat**: Direct duels with stat-based outcomes
-- **Leaderboards**: Rankings by level, gold, items, and more
+- 5 gods with individual flavor and modifiers
+- Choose a deity
+- Pray for favor and effects
+- Sacrifice gold for divine favor
+- Purchase blessings
+- Active blessing display on profiles
+- Divine event text and deity-specific scaling hooks
 
-## Entertainment
+## Optional AI Systems
 
-- **Gambling**: Coin flip, dice games, luck-scaled outcomes
-- **Daily Rewards**: Login bonuses with streak multipliers
-- **Crate System**: Loot boxes with tiered rewards
-- **Statistics**: Detailed performance tracking
+AI features are optional and controlled through environment configuration.
 
-## Technical
+- **Dynamic AI events** — periodic generated event narratives and themed rewards
+- **AI Oracle** — in-game manual/question answering with live game context
+- **Personal quest lines** — AI-generated multi-step quest arcs for individual players
 
-- **MariaDB/MySQL Backend**: Proper indexing, foreign keys, transactional integrity
-- **Automated Backups**: Hourly + daily database dumps via mysqldump
-- **Modular Architecture**: Each system is an independent cog — easy to extend or disable
-- **Web Leaderboard**: PHP dashboard included in `web/` directory
-- **Environment-Based Config**: All settings in `.env`, no hardcoded values
-- **Graceful Degradation**: AI features fall back to templates, reconnects on DB errors
+If `OPENAI_ENABLED=false`, the core RPG still runs. Sensible architecture, a rare mercy.
 
-## New Progression Systems
+## Web Dashboard
 
-### Achievements
-Players now unlock account-wide achievements for progression, combat, economy, daily streaks, loot, and religion milestones.
+The included PHP dashboard reads the same MariaDB database used by the bot.
 
-Commands:
-- `!achievements` / `!ach` / `!badges` — view a player's unlocked achievements and next targets
-- `!achievementlist` — list the full achievement catalog
-- `!achievementboard` / `!achlb` — achievement points leaderboard
+- Player rankings
+- Item leaderboard
+- Game stats
+- Guide page
+- `.env`-aware database configuration
 
-### Objective Board
-A rotating checklist gives players daily and weekly goals with claimable XP/gold rewards.
+## Operations
 
-Commands:
-- `!quests` / `!objectives` / `!tasks` — show current daily and weekly objectives
-- `!claimquests` / `!claimobjectives` / `!claimtasks` — claim completed objective rewards
+- MariaDB/MySQL backend
+- Schema file included
+- Python setup helper
+- Modular discord.py cog architecture
+- Backup, restore, and backup status commands
+- systemd-friendly runtime via `start.py`
+- `.env.example` for clean configuration onboarding
 
-### Loot Tables
-Adventure item rewards now use rarity-aware loot generation with themed names and level-scaled stats instead of plain generic drops.
+## Command Families
+
+- Character: `create`, `profile`, `evolve`, `classes`, `classbonuses`, `description`, `background`, `color`, `online`
+- Race: `races`, `race`, `raceinfo`, `changerace`
+- Inventory: `inventory`, `equipment`, `equip`, `remove`, `item`, `sell`, `give`, `crate`
+- Combat: `battle`, `tournament`, `battlestatus`, `battles`, `smite`
+- Raids/adventures: `raids`, `raidstatus`, `epicadventures`, `epicstatus`, `trigger_adventure`, `autoplay`, `status`
+- Economy: `market`, `offer`, `buy`, `withdraw`, `shop`, `buyshop`, `trade`
+- Religion: `gods`, `choose`, `pray`, `sacrifice`, `bless`
+- Progression: `achievements`, `achievementlist`, `achievementboard`, `quests`, `claimquests`, `daily`, `streak`, `vote`, `leaderboard`
+- AI: `ask`, `quest`, `questhistory`, `abandonquest`, `queststatus`, `aieventsstatus`
+- Admin/ops: `backup`, `backups`, `restore`, `backup_status`, `register_all`, `removeme`, `align`
+- Utility: `help`, `ping`, `info`
+
+## Design Philosophy
+
+DiscordRPG aims to be:
+
+- **Persistent** — progress survives restarts and lives in a real database.
+- **Social** — leaderboards, raids, markets, trades, PvP, and public profiles create server texture.
+- **Composable** — each system is a cog, so operators can reason about the beast without opening one cursed megafile.
+- **Expandable** — new commands, loot tables, objectives, events, classes, and web pages can be added without burning the village down.
